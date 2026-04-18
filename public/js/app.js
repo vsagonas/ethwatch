@@ -916,6 +916,8 @@ async function loadServerPrefs() {
     // Indicators are permanently off — user removed the toggle chips. Ignore
     // any stale server-stored indicator prefs so they can't flip back on.
     state.indicators = { sma20: false, ema50: false, volume: false };
+    // Restore day-details toggle state (defined in dayinfo.js).
+    if (p.dayDetailsOn !== undefined) window.setDayDetailsOn?.(p.dayDetailsOn === 'true');
     // Reflect into DOM
     document.querySelectorAll('.currency-btn').forEach(b => b.classList.toggle('active', b.dataset.currency === state.currency));
     document.querySelectorAll('.range-btn').forEach(b => b.classList.toggle('active', parseInt(b.dataset.days) === state.days));

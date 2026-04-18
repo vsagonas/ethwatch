@@ -434,8 +434,7 @@ function applyChartType(type) {
     if (lineWrapper)   lineWrapper.style.display   = '';
     if (candleWrapper) candleWrapper.style.display = 'none';
     if (lineHint)      lineHint.style.display      = '';
-    // Always hide day info cards in line chart mode.
-    window.hideDayInfo?.();
+    // syncDayInfo (dayinfo.js) handles visibility on chart-type-btn click.
   }
 
   try { localStorage.setItem(CHART_TYPE_LS_KEY, type); } catch {}

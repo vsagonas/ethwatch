@@ -170,12 +170,12 @@ function positionCandleStrip() {
 window.positionCandleStrip = positionCandleStrip;
 
 // ── LOAD MONTHLY ──────────────────────────────────────────────
-async function loadMonthly(currency) {
+async function loadMonthly(currency, days = 30) {
   const strip = document.getElementById('monthStrip');
-  if (strip) strip.innerHTML = '<div class="month-loading"><div class="spinner"></div><span>Loading 30 days…</span></div>';
+  if (strip) strip.innerHTML = `<div class="month-loading"><div class="spinner"></div><span>Loading ${days} days…</span></div>`;
 
   try {
-    const res = await fetch(`/api/monthly-sentiment?days=30&currency=${currency}`);
+    const res = await fetch(`/api/monthly-sentiment?days=${days}&currency=${currency}`);
     const json = await res.json();
     if (!json.success) throw new Error(json.error || 'Failed');
     monthlyCache = { days: json.days, fetchedAt: Date.now(), currency };

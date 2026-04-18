@@ -34,18 +34,10 @@ function hideAllDayContent() {
   document.getElementById('monthStrip')?.style.setProperty('display','none');
 }
 
-// Hide the day-info cards but restore the aligned strips (used internally
-// when the toggle is ON but we're not in 1D mode).
+// Legacy name — used by candlestick.js; just delegates to hideAllDayContent
+// so switching chart type doesn't bypass the toggle state.
 function hideDayInfo() {
-  document.getElementById('dayInfoCard')?.style.setProperty('display','none');
-  document.getElementById('dayInfoCardLine')?.style.setProperty('display','none');
-  if (_dayDetailsOn) {
-    document.getElementById('candleMonthStrip')?.style.removeProperty('display');
-    document.getElementById('monthStrip')?.style.removeProperty('display');
-  } else {
-    document.getElementById('candleMonthStrip')?.style.setProperty('display','none');
-    document.getElementById('monthStrip')?.style.setProperty('display','none');
-  }
+  hideAllDayContent();
 }
 
 // Set a strip to "loading / live" state.
@@ -78,11 +70,12 @@ function showEmptyDayInfo(reason) {
   _showActiveStrip();
 }
 
-// Show the day-info card for the active chart type.
+// Show the correct day-info card variant for the active chart type (1D only).
 // Only runs when the toggle is ON — bail out silently if toggled off.
 function _showActiveStrip() {
   if (!_dayDetailsOn) return;
   const inCandleMode = document.querySelector('.chart-type-btn[data-type="candles"]')?.classList.contains('active');
+  // Always hide the aligned strips when the day-info card is visible.
   document.getElementById('candleMonthStrip')?.style.setProperty('display','none');
   document.getElementById('monthStrip')?.style.setProperty('display','none');
   if (inCandleMode) {
@@ -200,30 +193,60 @@ function _updateToggleBtn() {
   btn.classList.toggle('active', _dayDetailsOn);
 }
 
+// Map the active range (days) to how many days of strip data to load.
+// Cap at 90 so we don't request 365 tiles for 1Y.
+function _stripDays() {
+  const d = window.state?.days || 7;
+  return Math.min(d, 90);
+}
+
 function syncDayInfo() {
+  const days = window.state?.days || 7;
+  const cur  = document.querySelector('.currency-btn.active')?.dataset.currency || 'usd';
+
   if (!_dayDetailsOn) {
     hideAllDayContent();
-  } else if (window.state?.days === 1) {
-    loadDayInfo();   // shows day-info card, hides strips
+  } else if (days === 1) {
+    // 1D: show the day-info chip card, hide the aligned strips.
+    document.getElementById('candleMonthStrip')?.style.setProperty('display','none');
+    document.getElementById('monthStrip')?.style.setProperty('display','none');
+    loadDayInfo();
   } else {
-    hideDayInfo();   // hides day-info card, restores aligned strip for 1M view
+    // 1W / 1M / 3M / 1Y: hide day-info card, show the aligned day-list strip.
+    document.getElementById('dayInfoCard')?.style.setProperty('display','none');
+    document.getElementById('dayInfoCardLine')?.style.setProperty('display','none');
+    document.getElementById('candleMonthStrip')?.style.removeProperty('display');
+    document.getElementById('monthStrip')?.style.removeProperty('display');
+    window.loadMonthly?.(cur, _stripDays());
   }
   _updateToggleBtn();
 }
 
+// Allow app.js to restore the saved pref before the first syncDayInfo fires.
+window.setDayDetailsOn = (v) => { _dayDetailsOn = !!v; _updateToggleBtn(); };
+
 window.syncDayInfo = syncDayInfo;
-window.hideDayInfo = hideDayInfo;
+window.hideDayInfo  = hideDayInfo;
+
+function _saveDayPref() {
+  fetch('/api/prefs', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ dayDetailsOn: String(_dayDetailsOn) }),
+  }).catch(() => {});
+}
 
 document.addEventListener('DOMContentLoaded', () => {
   // syncDayInfo is called explicitly after OHLC renders and after prefs load.
 
+  // Re-sync on currency change (refresh day-info data or strip data).
   document.querySelectorAll('.currency-btn').forEach(btn => {
     btn.addEventListener('click', () => setTimeout(() => {
-      const active = document.querySelector('.range-btn.active:not(#zoomOutBtn)');
-      if (parseInt(active?.dataset.days) === 1 && _dayDetailsOn) loadDayInfo(true);
+      if (_dayDetailsOn) syncDayInfo();
     }, 100));
   });
 
+  // Re-sync when chart type (Line/Candles) toggles.
   document.querySelectorAll('.chart-type-btn').forEach(btn => {
     btn.addEventListener('click', () => setTimeout(() => syncDayInfo(), 50));
   });
@@ -232,6 +255,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('dayInfoToggleBtn')?.addEventListener('click', () => {
     _dayDetailsOn = !_dayDetailsOn;
     syncDayInfo();
+    _saveDayPref();
   });
 
   // Click the day-info card to expand/collapse the news panel.
