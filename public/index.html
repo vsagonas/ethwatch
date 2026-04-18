@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ETHWATCH — Live Ethereum Tracker</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>◆</text></svg>" />
+  <link rel="stylesheet" href="/css/styles.css" />
+</head>
+<body>
+
+  <!-- STICKY SHELL — header + price bar stay fixed while scrolling -->
+  <div class="sticky-shell">
+
+  <!-- HEADER -->
+  <header class="header">
+    <div class="header-left">
+      <div class="eth-logo">◆</div>
+      <div class="header-title">
+        <span class="brand">ETHWATCH</span>
+        <span class="subtitle">Live Ethereum Tracker</span>
+      </div>
+    </div>
+    <div class="header-center">
+      <!-- Market stat chips -->
+      <div class="header-market-chips">
+        <div class="hmc-chip">
+          <span class="hmc-label">Mkt Cap</span>
+          <span class="hmc-value" id="statMarketCap">—</span>
+        </div>
+        <div class="hmc-chip">
+          <span class="hmc-label">24h Vol</span>
+          <span class="hmc-value" id="statVolume">—</span>
+        </div>
+        <div class="hmc-chip">
+          <span class="hmc-label">7d</span>
+          <span class="hmc-value" id="stat7d">—</span>
+        </div>
+      </div>
+      <div class="header-of-divider"></div>
+      <!-- Live Order Flow -->
+      <div class="header-orderflow" id="orderflowHero">
+        <div class="of-window-tabs" id="ofWindowTabs">
+          <button class="of-tab active" data-window="5m">5M</button>
+          <button class="of-tab" data-window="1h">1H</button>
+          <button class="of-tab" data-window="24h">24H</button>
+        </div>
+        <div class="hof-trend">
+          <div class="hof-stat"><span class="hof-label" id="ofLabelBuy">5m Buy</span><span class="hof-val buy" id="ofCurBuy">—</span></div>
+          <div class="trend-arrow-block" id="ofTrendBlock"><div class="trend-arrow" id="ofTrendArrow">→</div><div class="trend-text" id="ofTrendText">—</div></div>
+          <div class="hof-stat"><span class="hof-label" id="ofLabelSell">5m Sell</span><span class="hof-val sell" id="ofCurSell">—</span></div>
+        </div>
+        <div class="hof-trades">
+          <div class="lt-chip buy">
+            <div class="lt-label">Last Buy</div>
+            <div class="lt-main"><span class="lt-price" id="lastBuyPrice">—</span><span class="lt-qty" id="lastBuyQty">—</span></div>
+          </div>
+          <div class="lt-chip sell">
+            <div class="lt-label">Last Sell</div>
+            <div class="lt-main"><span class="lt-price" id="lastSellPrice">—</span><span class="lt-qty" id="lastSellQty">—</span></div>
+          </div>
+          <div class="lt-chip rate" id="ofBuyRateChip">
+            <div class="lt-label">ETH/s Buy</div>
+            <div class="lt-main"><span class="lt-price" id="ofBuyRate">—</span><span class="lt-qty lt-sub">(10s)</span></div>
+          </div>
+          <div class="lt-chip rate sell" id="ofSellRateChip">
+            <div class="lt-label">ETH/s Sell</div>
+            <div class="lt-main"><span class="lt-price" id="ofSellRate">—</span><span class="lt-qty lt-sub">(10s)</span></div>
+          </div>
+        </div>
+        <!-- Legacy hidden elements so JS doesn't error -->
+        <div id="ofDot" style="display:none;"></div>
+        <div id="ofLabel" style="display:none;"></div>
+        <div id="trendBar" style="display:none;"></div>
+        <div id="trendArrow" style="display:none;"></div>
+        <div id="trendText" style="display:none;"></div>
+        <div id="trendArrowBlock" style="display:none;"></div>
+        <div id="of5mBuy" style="display:none;"></div>
+        <div id="of5mSell" style="display:none;"></div>
+        <div id="buyFeed" style="display:none;"></div>
+        <div id="sellFeed" style="display:none;"></div>
+      </div>
+    </div>
+    <div class="header-right">
+      <button class="theme-toggle" id="themeToggle" title="Cycle theme: Dark → Light → Dystopian → Matrix">
+        <span class="theme-icon" id="themeIcon">☾</span>
+        <span class="theme-label" id="themeLabel">DARK</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- HERO -->
+  <section class="hero">
+    <div class="hero-inner">
+      <div class="price-block">
+        <div class="currency-tabs">
+          <button class="currency-btn active" data-currency="usd">USD</button>
+          <button class="currency-btn" data-currency="eur">EUR</button>
+        </div>
+        <div class="price-main">
+          <span class="price-symbol" id="priceSymbol">$</span>
+          <span class="price-value" id="priceValue">—</span>
+          <button class="buy-chip buy-chip-inline" id="buyChip" title="Click for full AI reasoning">
+            <span class="buy-chip-verdict" id="baVerdict">—</span>
+            <span class="buy-chip-conf" id="baConfidence">—</span>
+            <span class="buy-chip-price" id="baChipPrice" title="Live ETH price">—</span>
+          </button>
+          <button class="buy-chip-refresh" id="buyChipRefresh" title="Force a fresh AI recommendation">↻</button>
+        </div>
+        <div class="price-meta">
+          <span class="price-change" id="priceChange">—</span>
+          <span class="price-change-label">24h</span>
+        </div>
+        <!-- Minimal inline stats — previously full cards. -->
+        <div class="price-minimal-stats">
+          <span class="pm-stat">30d <strong id="stat30d">—</strong></span>
+          <span class="pm-sep">·</span>
+          <span class="pm-stat">ATH <strong id="statATH">—</strong></span>
+          <span class="pm-sep">·</span>
+          <span class="pm-stat">Rank <strong id="statRank">—</strong></span>
+        </div>
+        <div class="last-updated" id="lastUpdated">Fetching…</div>
+        <!-- AI 7-day forecast chip — sits inline with the price row.
+             Main button toggles the overlay on/off; ⓘ opens the detail modal. -->
+        <button class="ai-forecast-chip" id="aiVerdictBigBtn" title="Toggle Claude 7-day forecast overlay on the chart">
+          <span class="afc-icon">🧠</span>
+          <span class="afc-title">AI FORECAST</span>
+        </button>
+        <button class="ai-forecast-info" id="aiForecastInfoBtn" title="View forecast detail">ⓘ</button>
+      </div>
+
+      <!-- 7-day forecast modal -->
+      <div class="day-modal" id="forecastModal" style="display:none;">
+        <div class="day-modal-backdrop" id="forecastModalBackdrop"></div>
+        <div class="day-modal-panel forecast-modal-panel" role="dialog" aria-modal="true">
+          <div class="dm-header">
+            <div>
+              <div class="dm-date">AI 7-Day Forecast</div>
+              <div class="dm-date-sub" id="forecastGeneratedTs"></div>
+            </div>
+            <button class="close-btn" id="forecastClose">✕</button>
+          </div>
+          <div class="dm-body">
+            <div class="fc-top">
+              <div class="fc-verdict" id="fcVerdict">—</div>
+              <div class="fc-meta">
+                <div><span class="mv-label">Confidence</span><strong id="fcConfidence">—</strong></div>
+                <div><span class="mv-label">Expected Move</span><strong id="fcMove">—</strong></div>
+                <div><span class="mv-label">Anchor</span><strong id="fcAnchor">—</strong></div>
+              </div>
+            </div>
+            <div class="fc-headline" id="fcHeadline">—</div>
+            <div class="fc-pattern" id="fcPatternBlock" style="display:none;">
+              <div class="fc-pattern-title">Historical Pattern Match</div>
+              <div class="fc-pattern-body">
+                <div><span class="mv-label">Analog</span><strong id="fcPatternDates">—</strong></div>
+                <div class="fc-pattern-text" id="fcPatternSim"></div>
+                <div class="fc-pattern-text fc-pattern-outcome" id="fcPatternOut"></div>
+              </div>
+            </div>
+            <div class="fc-narrative" id="fcNarrative"></div>
+            <div class="fc-section">
+              <div class="fc-section-title">Day-by-day breakdown</div>
+              <div class="fc-days" id="fcDays"></div>
+            </div>
+            <div class="ba-lists fc-lists">
+              <div><strong>Key drivers</strong><ul id="fcDrivers"></ul></div>
+              <div><strong>Risks</strong><ul id="fcRisks"></ul></div>
+            </div>
+            <div class="fc-actions">
+              <button class="predict-btn" id="forecastShowOnChart">👁 Show on Chart</button>
+              <button class="save-set-btn" id="forecastRefresh" title="Force a fresh Claude run">↻ Re-run Forecast</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Forecast day-detail popup — opens when user clicks a forecast day tile. -->
+      <div class="day-modal" id="forecastDayModal" style="display:none;">
+        <div class="day-modal-backdrop" id="forecastDayBackdrop"></div>
+        <div class="day-modal-panel forecast-day-panel" id="forecastDayPanel" role="dialog" aria-modal="true">
+          <div class="dm-header">
+            <div>
+              <div class="fdp-day">Day —</div>
+              <div class="fdp-date">—</div>
+            </div>
+            <div class="fdp-right">
+              <span class="fdp-direction-badge">—</span>
+              <button class="close-btn" id="forecastDayClose">✕</button>
+            </div>
+          </div>
+          <div class="dm-body">
+            <div class="fdp-top">
+              <div class="fdp-move">—</div>
+              <div class="fdp-narrative">—</div>
+            </div>
+            <div class="fdp-event"></div>
+            <div class="fdp-section-title">Why we think this</div>
+            <div class="fdp-headline"></div>
+            <div class="fdp-pattern"></div>
+            <div class="fdp-section-title">Key drivers</div>
+            <ul class="fdp-drivers"></ul>
+          </div>
+        </div>
+      </div>
+
+      <!-- Popup with full recommendation detail. -->
+      <div class="day-modal" id="buyModal" style="display:none;">
+        <div class="day-modal-backdrop" id="buyModalBackdrop"></div>
+        <div class="day-modal-panel" id="buyModalPanel" role="dialog" aria-modal="true">
+          <div class="dm-header">
+            <div>
+              <div class="dm-date">Buy Time — AI Recommendation</div>
+              <div class="dm-date-sub" id="baGeneratedTs"></div>
+            </div>
+            <button class="close-btn" id="buyModalClose">✕</button>
+          </div>
+          <div class="dm-body">
+            <div class="ba-modal-top">
+              <div class="ba-modal-verdict" id="baModalVerdict">—</div>
+              <div class="ba-modal-meta">
+                <div><span class="mv-label">Confidence</span><strong id="baModalConf">—</strong></div>
+                <div><span class="mv-label">Horizon</span><strong id="baTimeframe">—</strong></div>
+                <div><span class="mv-label">ETH Price</span><strong id="baModalPrice">—</strong></div>
+              </div>
+            </div>
+            <div class="dm-ai-summary" id="baHeadline">Loading advisor…</div>
+            <div class="ba-lists">
+              <div><strong>Pros</strong><ul id="baPros"></ul></div>
+              <div><strong>Cons</strong><ul id="baCons"></ul></div>
+              <div><strong>Risks</strong><ul id="baRisks"></ul></div>
+            </div>
+            <button class="save-set-btn" id="buyAdvisorRefresh" style="margin-top:10px;" title="Ask Claude for a fresh recommendation">↻ Refresh</button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  </div><!-- /sticky-shell -->
+
+  <!-- MAIN CHART -->
+  <section class="section chart-section">
+    <div class="section-header">
+      <h2 class="section-title">Price Chart</h2>
+      <div class="chart-controls">
+        <button class="range-btn zoom-out-btn" id="zoomOutBtn" style="display:none;" title="Zoom out to the full 30-day range">⇔ Full Month</button>
+        <!-- Chart type toggle -->
+        <div class="chart-type-tabs">
+          <button class="chart-type-btn" data-type="line" title="Line chart">📈 Line</button>
+          <button class="chart-type-btn active" data-type="candles" title="Candlestick chart">🕯 Candles</button>
+        </div>
+        <div class="range-tabs">
+          <button class="range-btn" data-days="1">1D</button>
+          <button class="range-btn active" data-days="7">1W</button>
+          <button class="range-btn" data-days="30">1M</button>
+          <button class="range-btn" data-days="90">3M</button>
+          <button class="range-btn" data-days="365">1Y</button>
+        </div>
+        <button class="save-set-btn" id="dayInfoToggleBtn" title="Show/hide day details and month strip">📋 Day Details</button>
+        <button class="reset-prediction-btn" id="resetPredictionBtn" title="Turn off the AI forecast, wipe it from storage, and reset the chart to the default 1W view">↺ Reset Prediction</button>
+        <button class="export-btn" id="exportBtn" title="Export chart as PNG">Export</button>
+        <button class="save-set-btn rescore-btn" id="rescoreBtn" title="Re-run Claude verdicts for the last 30 days">↻ Rescore</button>
+      </div>
+    </div>
+
+    <!-- Line chart + aligned world-signals strip -->
+    <div class="chart-wrapper" id="lineChartWrapper" style="display:none;">
+      <!-- Day info strip replaces the aligned strip in 1D view (same height). -->
+      <div class="day-info-strip" id="dayInfoCardLine" style="display:none;">
+        <div class="dis-left">
+          <div class="dis-date" id="dicDateLine">—</div>
+          <div class="dis-verdict" id="dicVerdictLine">—</div>
+        </div>
+        <div class="dis-stats" id="dicStatsLine"></div>
+        <div class="dis-summary" id="dicSummaryLine"></div>
+      </div>
+      <!-- Strip lives ABOVE the chart; tiles are x-positioned to match price-chart x-scale. -->
+      <div class="chart-aligned-strip" id="monthStrip" aria-label="30-day world signals strip"></div>
+
+      <!-- Fixed-height holder so Chart.js responsive sizing can't stretch the canvas. -->
+      <div class="chart-canvas-holder" style="position:relative;">
+        <div class="chart-loader" id="chartLoader">
+          <div class="spinner"></div>
+          <span>Loading chart…</span>
+        </div>
+        <canvas id="priceChart"></canvas>
+        <div id="lineTooltip" class="lw-tooltip" style="display:none;"></div>
+      </div>
+
+      <div class="month-legend chart-strip-legend">
+        <span class="m-leg bull">● Bullish</span>
+        <span class="m-leg neutral">● Neutral</span>
+        <span class="m-leg bear">● Bearish</span>
+        <span class="m-leg pending">● Pending</span>
+        <span class="m-leg-sep">·</span>
+        <span class="m-leg up">▲ Hopeful</span>
+        <span class="m-leg down">▼ Bleak</span>
+      </div>
+    </div>
+
+    <!-- Candlestick chart (TradingView Lightweight Charts) -->
+    <div class="chart-wrapper" id="candleChartWrapper">
+      <!-- Day info strip — replaces the aligned strip in 1D view (same height slot). -->
+      <div class="day-info-strip" id="dayInfoCard" style="display:none;">
+        <div class="dis-left">
+          <div class="dis-date" id="dicDate">—</div>
+          <div class="dis-verdict" id="dicVerdict">—</div>
+        </div>
+        <div class="dis-stats" id="dicStats"></div>
+        <div class="dis-summary" id="dicSummary"></div>
+        <!-- News columns in an expandable row below the strip -->
+        <div class="dis-news" id="dicNews" style="display:none;">
+          <div class="dic-col"><div class="dic-section-title">Crypto</div><ul id="dicNewsCrypto"></ul></div>
+          <div class="dic-col"><div class="dic-section-title">Macro / World</div><ul id="dicNewsMacro"></ul></div>
+          <div class="dic-col"><div class="dic-section-title">Hope</div><ul id="dicNewsHope"></ul></div>
+        </div>
+      </div>
+      <!-- Same aligned strip above the candles; x-sync'd via lwChart timeToCoordinate. -->
+      <div class="chart-aligned-strip" id="candleMonthStrip" aria-label="30-day world signals strip"></div>
+
+      <div class="chart-canvas-holder" style="position:relative;">
+        <div class="chart-loader" id="candleLoader">
+          <div class="spinner"></div>
+          <span>Loading candles…</span>
+        </div>
+        <div id="lwChart" style="height:100%;"></div>
+        <div id="lwTooltip" class="lw-tooltip" style="display:none;"></div>
+      </div>
+
+      <div class="candle-legend">
+        <span class="candle-leg-item middle">● Middle candle (doji/spinning top)</span>
+        <span class="candle-leg-item marked">★ Your marked candle</span>
+        <span class="candle-hint">Click candles to mark bullish patterns · Collect 3+ then click Predict</span>
+      </div>
+      <div class="candle-actions" id="candleActions" style="display:none;">
+        <span class="marked-count" id="markedCount">0 candles marked</span>
+        <button class="predict-btn" id="predictBtn">🤖 Predict Pattern</button>
+        <button class="save-set-btn" id="saveSetBtn" title="Save marks as an Oracle pattern set">
+          <svg class="oracle-icon" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><circle cx="12" cy="12" r="2.5" fill="currentColor"/><circle cx="12" cy="12" r="6.5" fill="none" stroke="currentColor" stroke-width="1.2"/><circle cx="12" cy="12" r="10.5" fill="none" stroke="currentColor" stroke-width="0.6" opacity="0.45"/><path d="M12 1.5v2.5M12 20v2.5M1.5 12h2.5M20 12h2.5" stroke="currentColor" stroke-width="1.2"/></svg>
+          Save as Oracle Set
+        </button>
+        <button class="clear-marks-btn" id="clearMarksBtn">Clear Marks</button>
+      </div>
+    </div>
+
+    <div class="chart-hint" id="lineChartHint" style="display:none;">Click any day tile for headlines · Drag to pan · Zoom is disabled — use ⇔ Full Month to expand the 1M view</div>
+  </section>
+
+  <!-- PATTERN PREDICTION RESULT — shown directly under chart when a pattern is found -->
+  <section class="section" id="predictionSection" style="display:none;">
+    <div class="section-header">
+      <h2 class="section-title">AI Pattern Prediction</h2>
+      <button class="close-btn" id="closePrediction">✕ Close</button>
+    </div>
+    <div id="predictionResult"></div>
+  </section>
+
+  <!-- PATTERN RECOGNITION (similarity) — moved here so it's right under the chart -->
+  <section class="section patterns-section">
+    <div class="section-header">
+      <h2 class="section-title">Pattern Recognition</h2>
+      <p class="section-desc">Similar 24-hour price movements found in the past 90 days</p>
+    </div>
+    <div class="patterns-grid" id="patternsGrid">
+      <div class="patterns-loading">
+        <div class="spinner"></div>
+        <span>Analyzing patterns…</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ORACLE — Saved marker sets + AI prophecy -->
+  <section class="section oracle-section" id="oracleSection">
+    <div class="section-header">
+      <h2 class="section-title">
+        <svg class="oracle-icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="12" cy="12" r="2.5" fill="currentColor"/><circle cx="12" cy="12" r="6.5" fill="none" stroke="currentColor" stroke-width="1.2"/><circle cx="12" cy="12" r="10.5" fill="none" stroke="currentColor" stroke-width="0.6" opacity="0.45"/><path d="M12 1.5v2.5M12 20v2.5M1.5 12h2.5M20 12h2.5" stroke="currentColor" stroke-width="1.2"/></svg>
+        ORACLE — Neural Pattern Prophecy
+      </h2>
+      <p class="section-desc">Save a set of marked candles as a named pattern. The Oracle correlates each marker day's headlines, cross-asset moves, and price structure to forecast what follows.</p>
+    </div>
+    <div id="oracleSetsList" class="oracle-sets-list">
+      <div class="oracle-empty">No Oracle sets yet. Mark candles in the chart, then click <strong>Save as Oracle Set</strong>.</div>
+    </div>
+  </section>
+
+  <!-- ORACLE save dialog -->
+  <div class="day-modal" id="oracleSaveModal" style="display:none;">
+    <div class="day-modal-backdrop" id="oracleSaveBackdrop"></div>
+    <div class="day-modal-panel oracle-save-panel" role="dialog" aria-modal="true">
+      <div class="dm-header">
+        <div>
+          <div class="dm-date">New Oracle Pattern Set</div>
+          <div class="dm-date-sub"><span id="oracleSaveMarkCount">0</span> candles · ETH prices will be embedded.</div>
+        </div>
+        <button class="close-btn" id="oracleSaveClose">✕</button>
+      </div>
+      <div class="dm-body">
+        <label class="oracle-form-label">Name
+          <input id="oracleSaveName" type="text" maxlength="120" placeholder="e.g. Bullish doji cluster" />
+        </label>
+        <label class="oracle-form-label">Description (what do these candles share?)
+          <textarea id="oracleSaveDesc" rows="3" placeholder="Low volatility after a 5%+ drop, with positive ETF news…"></textarea>
+        </label>
+        <label class="oracle-form-label">Your prediction (what do you expect after this pattern?)
+          <textarea id="oracleSavePred" rows="3" placeholder="ETH rallies 3–6% within 72h."></textarea>
+        </label>
+        <div class="oracle-save-actions">
+          <button class="clear-marks-btn" id="oracleSaveCancel">Cancel</button>
+          <button class="predict-btn" id="oracleSaveSubmit">Save Pattern</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- DAY DETAIL MODAL -->
+  <div class="day-modal" id="dayModal" style="display:none;">
+    <div class="day-modal-backdrop" id="dayModalBackdrop"></div>
+    <div class="day-modal-panel" id="dayModalPanel" role="dialog" aria-modal="true"></div>
+  </div>
+
+  <!-- RSI CHART -->
+  <section class="section rsi-section">
+    <div class="section-header">
+      <h2 class="section-title">RSI (14)</h2>
+      <div class="rsi-legend">
+        <span class="legend-item overbought">Overbought &gt;70</span>
+        <span class="legend-item oversold">Oversold &lt;30</span>
+      </div>
+    </div>
+    <div class="chart-wrapper rsi-wrapper">
+      <canvas id="rsiChart"></canvas>
+    </div>
+  </section>
+
+  <!-- PREDICTION HISTORY -->
+  <section class="section" id="predictionHistorySection" style="display:none;">
+    <div class="section-header">
+      <h2 class="section-title">Prediction History</h2>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <select id="predHistFilter" class="alert-select" style="font-size:12px;padding:4px 8px;">
+          <option value="">All types</option>
+          <option value="oracle">Oracle</option>
+          <option value="ai_forecast">AI Forecast</option>
+          <option value="pattern">Pattern</option>
+        </select>
+        <p class="section-desc" style="margin:0;">All predictions saved with accuracy tracking</p>
+      </div>
+    </div>
+    <div id="predHistList" class="pred-hist-list">
+      <div class="patterns-loading"><div class="spinner"></div><span>Loading…</span></div>
+    </div>
+  </section>
+
+  <!-- AI news summary popup (invoked from the footer button) -->
+  <div class="ai-summary-panel floating" id="aiSummaryPanel" style="display:none;">
+    <div class="ai-summary-header">
+      <span class="ai-summary-title">AI News Analysis (last 24h)</span>
+      <button class="close-btn" id="closeAiSummary">✕</button>
+    </div>
+    <div id="aiSummaryContent">
+      <div class="ai-loading"><div class="spinner"></div> Analyzing news with AI…</div>
+    </div>
+  </div>
+
+  <!-- Kept hidden for back-compat with code that still targets newsGrid. -->
+  <div id="newsGrid" style="display:none;"></div>
+
+  <!-- ALERTS -->
+  <section class="section alerts-section">
+    <div class="section-header">
+      <h2 class="section-title">Price Alerts</h2>
+    </div>
+    <div class="alerts-form">
+      <div class="alert-input-group">
+        <select class="alert-select" id="alertType">
+          <option value="above">Price goes above</option>
+          <option value="below">Price goes below</option>
+        </select>
+        <input type="number" class="alert-input" id="alertPrice" placeholder="Enter price…" step="0.01" />
+        <button class="alert-add-btn" id="alertAddBtn">Add Alert</button>
+      </div>
+    </div>
+    <div class="alerts-list" id="alertsList">
+      <div class="alerts-empty">No alerts set. Add one above.</div>
+    </div>
+  </section>
+
+  <!-- STICKY FOOTER: market vitals + news marquee + meta row.
+       Always visible — fixed to the bottom of the viewport. -->
+  <!-- Floating footer-toggle button — collapse / expand the market vitals bar -->
+  <button class="footer-toggle-btn" id="footerToggleBtn" title="Hide / show the market vitals bar">▼</button>
+
+  <footer class="site-footer" id="siteFooter">
+    <!-- Market Vitals frame -->
+    <div class="market-vitals" id="marketVitals">
+      <div class="mv-group" data-group="struct">
+        <div class="mv-group-title">Price & Structure</div>
+        <div class="mv-chip" title="24h global crypto trading volume (USD)"><span class="mv-label">Vol 24h</span><span class="mv-value" id="mvVolume">—</span></div>
+        <div class="mv-chip" title="Binance ETH perp open interest"><span class="mv-label">OI</span><span class="mv-value" id="mvOI">—</span></div>
+        <div class="mv-chip" title="Binance ETH perp funding rate — positive = longs paying"><span class="mv-label">Funding</span><span class="mv-value" id="mvFunding">—</span></div>
+      </div>
+      <div class="mv-group" data-group="tech">
+        <div class="mv-group-title">Technicals</div>
+        <div class="mv-chip" title="RSI(14)"><span class="mv-label">RSI14</span><span class="mv-value" id="mvRsi">—</span></div>
+        <div class="mv-chip" title="Price vs EMA20"><span class="mv-label">vs EMA20</span><span class="mv-value" id="mvEma20">—</span></div>
+        <div class="mv-chip" title="Price vs EMA50"><span class="mv-label">vs EMA50</span><span class="mv-value" id="mvEma50">—</span></div>
+        <div class="mv-chip" title="Price vs EMA200"><span class="mv-label">vs EMA200</span><span class="mv-value" id="mvEma200">—</span></div>
+        <div class="mv-chip" title="MACD cross / direction"><span class="mv-label">MACD</span><span class="mv-value" id="mvMacd">—</span></div>
+        <div class="mv-chip" title="Bollinger bandwidth %"><span class="mv-label">BB Width</span><span class="mv-value" id="mvBB">—</span></div>
+      </div>
+      <div class="mv-group" data-group="onchain">
+        <div class="mv-group-title">On-Chain</div>
+        <div class="mv-chip" title="ETH gas price (gwei)"><span class="mv-label">Gas</span><span class="mv-value" id="mvGas">—</span></div>
+        <div class="mv-chip" title="BTC network hash rate (EH/s)"><span class="mv-label">BTC Hash</span><span class="mv-value" id="mvHash">—</span></div>
+      </div>
+      <div class="mv-group" data-group="macro">
+        <div class="mv-group-title">Macro</div>
+        <div class="mv-chip" title="Bitcoin market-cap dominance"><span class="mv-label">BTC Dom</span><span class="mv-value" id="mvBtcDom">—</span></div>
+        <div class="mv-chip" title="ETH/BTC ratio"><span class="mv-label">ETH/BTC</span><span class="mv-value" id="mvEthBtc">—</span></div>
+        <div class="mv-chip" title="Crypto Fear &amp; Greed Index (0–100)"><span class="mv-label">F&amp;G</span><span class="mv-value" id="mvFG">—</span></div>
+      </div>
+    </div>
+
+    <!-- News marquee rendered offscreen — its tracks still update so the
+         popup picks up fresh items. (Kept to avoid breaking existing code
+         that writes into marqueeTrackA / marqueeTrackB.) -->
+    <div class="news-marquee-wrap" aria-hidden="true">
+      <div class="marquee-live-tag">LIVE</div>
+      <div class="news-marquee" id="newsMarquee">
+        <div class="marquee-track" id="marqueeTrackA"></div>
+        <div class="marquee-track" id="marqueeTrackB"></div>
+      </div>
+      <button class="ai-analyze-btn marquee-ai-btn" id="aiAnalyzeBtn" title="AI sentiment of last 24h headlines">🤖 AI</button>
+    </div>
+
+    <div class="footer-meta">
+      <span>Prices: <a href="https://www.coingecko.com" target="_blank" rel="noopener">CoinGecko</a></span>
+      <span class="footer-sep">·</span>
+      <span>Order Flow: <a href="https://binance.com" target="_blank" rel="noopener">Binance</a></span>
+      <span class="footer-sep">·</span>
+      <span>Updates every 30 seconds</span>
+      <span class="footer-sep">·</span>
+      <span>Next update in <span id="countdown">30</span>s</span>
+      <span class="footer-sep">·</span>
+      <span id="newsSourcesLabel">Loading news…</span>
+    </div>
+  </footer>
+
+  <div class="toast-container" id="toastContainer"></div>
+
+  <!-- Floating NEWS popup + toggle button — chat-style widget at bottom-right -->
+  <button class="news-fab" id="newsFabBtn" title="Open news feed">
+    <span class="news-fab-icon">📰</span>
+    <span class="news-fab-label">NEWS</span>
+    <span class="news-fab-dot" id="newsFabDot"></span>
+  </button>
+  <div class="news-popup" id="newsPopup" style="display:none;" aria-hidden="true">
+    <div class="news-popup-header">
+      <div class="news-popup-title">
+        <span class="np-live-dot"></span>
+        <span>Live News Feed</span>
+      </div>
+      <div class="news-popup-actions">
+        <button class="ai-analyze-btn" id="newsPopupAiBtn" title="AI sentiment of last 24h headlines">🤖 AI</button>
+        <button class="close-btn" id="newsPopupClose" title="Close">✕</button>
+      </div>
+    </div>
+    <div class="news-popup-body" id="newsPopupBody">
+      <div class="news-popup-loading">Loading…</div>
+    </div>
+  </div>
+
+  <!-- Libraries -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
+  <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
+
+  <!-- App modules -->
+  <script src="/js/app.js"></script>
+  <script src="/js/candlestick.js"></script>
+  <script src="/js/orderflow.js"></script>
+  <script src="/js/news.js"></script>
+  <script src="/js/monthly.js"></script>
+  <script src="/js/oracle.js"></script>
+  <script src="/js/vitals.js"></script>
+  <script src="/js/buyadvisor.js"></script>
+  <script src="/js/forecast.js"></script>
+  <script src="/js/dayinfo.js"></script>
+  <script src="/js/predhistory.js"></script>
+  <script>
+    // Footer hide/show toggle — persisted across reloads.
+    (function() {
+      const KEY = 'eth_footer_hidden_v1';
+      const body = document.body;
+      const apply = (hidden) => {
+        body.classList.toggle('footer-hidden', hidden);
+        const btn = document.getElementById('footerToggleBtn');
+        if (btn) {
+          btn.textContent = hidden ? '▲' : '▼';
+          btn.title = hidden ? 'Show market vitals' : 'Hide market vitals';
+        }
+      };
+      let hidden = false;
+      try { hidden = localStorage.getItem(KEY) === '1'; } catch {}
+      document.addEventListener('DOMContentLoaded', () => {
+        apply(hidden);
+        document.getElementById('footerToggleBtn')?.addEventListener('click', () => {
+          hidden = !hidden;
+          try { localStorage.setItem(KEY, hidden ? '1' : '0'); } catch {}
+          apply(hidden);
+        });
+      });
+    })();
+  </script>
+</body>
+</html>
