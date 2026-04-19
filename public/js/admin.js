@@ -161,6 +161,29 @@ function initRunForecast() {
   });
 }
 
+// ── REFRESH BUY ADVICE ────────────────────────────────────────────
+function initRefreshBuyAdvice() {
+  const btn    = document.getElementById('refreshBuyBtn');
+  const status = document.getElementById('buyAdviceStatus');
+  btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    setStatus(status, '⏳ Fetching fresh recommendation…', 'running');
+    try {
+      const res = await fetch('/api/buy-time?force=1').then(r => r.json());
+      if (res.success) {
+        const d = res.data;
+        setStatus(status, `✓ ${(d?.verdict || '').toUpperCase()} · ${d?.confidence != null ? Math.round(d.confidence * 100) + '% conf' : ''} · Live on Watch`, 'ok');
+      } else {
+        setStatus(status, '✗ ' + escHtml(res.error), 'err');
+      }
+    } catch (err) {
+      setStatus(status, '✗ ' + escHtml(err.message), 'err');
+    } finally {
+      btn.disabled = false;
+    }
+  });
+}
+
 // ── RESCORE SENTIMENT ─────────────────────────────────────────────
 function initRescore() {
   const btn    = document.getElementById('rescoreBtn');
@@ -351,6 +374,7 @@ async function loadPredictions() {
 function init() {
   initPeriodPicker();
   initRunForecast();
+  initRefreshBuyAdvice();
   initRescore();
   initManualPrediction();
   loadStats(30);

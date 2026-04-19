@@ -52,39 +52,52 @@
     <div class="adm-bars" id="climateBars"></div>
   </section>
 
-  <!-- ── AI CONTROLS ───────────────────────────── -->
-  <section class="adm-section adm-controls-row">
-    <div class="adm-control-card">
-      <div class="acc-title">🔮 FORECAST GENERATOR</div>
-      <div class="acc-desc">Generate a 7-day ETH forecast. Choose data window, forecast mode, then run.</div>
+  <!-- ── RECALCULATIONS ───────────────────────── -->
+  <section class="adm-section">
+    <div class="adm-section-title">RECALCULATIONS</div>
+    <div class="adm-controls-row">
 
-      <div class="apf-label" style="margin-bottom:6px">MODE</div>
-      <div class="adm-days-picker" id="biasPicker">
-        <button class="days-btn active" data-bias="neutral">🎯 Today's Data</button>
-        <button class="days-btn" data-bias="bearish">📉 Force Downward</button>
-        <button class="days-btn" data-bias="bullish">📈 Force Upward</button>
+      <div class="adm-control-card">
+        <div class="acc-title">🔮 FORECAST GENERATOR</div>
+        <div class="acc-desc">Generate a 7-day ETH forecast. Choose data window, forecast mode, then run.</div>
+
+        <div class="apf-label" style="margin-bottom:6px">MODE</div>
+        <div class="adm-days-picker" id="biasPicker">
+          <button class="days-btn active" data-bias="neutral">🎯 Today's Data</button>
+          <button class="days-btn" data-bias="bearish">📉 Force Downward</button>
+          <button class="days-btn" data-bias="bullish">📈 Force Upward</button>
+        </div>
+
+        <div class="apf-label" style="margin-bottom:6px;margin-top:12px">DATA WINDOW</div>
+        <div class="adm-days-picker" id="daysPicker">
+          <button class="days-btn" data-days="7">7 Days</button>
+          <button class="days-btn" data-days="15">15 Days</button>
+          <button class="days-btn" data-days="30">1 Month</button>
+          <button class="days-btn active" data-days="90">3 Months</button>
+        </div>
+
+        <button class="adm-btn primary" id="runForecastBtn" style="margin-top:8px">▶ Run Forecast</button>
+        <div class="acc-status" id="forecastStatus"></div>
       </div>
 
-      <div class="apf-label" style="margin-bottom:6px;margin-top:12px">DATA WINDOW</div>
-      <div class="adm-days-picker" id="daysPicker">
-        <button class="days-btn" data-days="7">7 Days</button>
-        <button class="days-btn" data-days="15">15 Days</button>
-        <button class="days-btn" data-days="30">1 Month</button>
-        <button class="days-btn active" data-days="90">3 Months</button>
+      <div class="adm-control-card">
+        <div class="acc-title">💡 REFRESH BUY / HODL ADVICE</div>
+        <div class="acc-desc">Force a fresh BUY / HODL / SELL recommendation from Claude using current market vitals and sentiment. Updates the chip on Watch instantly.</div>
+        <button class="adm-btn primary" id="refreshBuyBtn">▶ Refresh Advice</button>
+        <div class="acc-status" id="buyAdviceStatus"></div>
       </div>
 
-      <button class="adm-btn primary" id="runForecastBtn" style="margin-top:8px">▶ Run Forecast</button>
-      <div class="acc-status" id="forecastStatus"></div>
-    </div>
-    <div class="adm-control-card">
-      <div class="acc-title">📊 RESCORE SENTIMENT</div>
-      <div class="acc-desc">Re-run Claude on the last N days of sentiment (clears existing verdicts and rebuilds). Use after adding missing headlines.</div>
-      <div class="adm-input-row">
-        <input type="number" id="rescoreDays" value="7" min="1" max="60" class="adm-input" />
-        <span class="adm-input-label">days</span>
+      <div class="adm-control-card">
+        <div class="acc-title">📊 RESCORE SENTIMENT</div>
+        <div class="acc-desc">Re-run Claude on the last N days of sentiment (clears existing verdicts and rebuilds). Use after adding missing headlines.</div>
+        <div class="adm-input-row">
+          <input type="number" id="rescoreDays" value="7" min="1" max="60" class="adm-input" />
+          <span class="adm-input-label">days</span>
+        </div>
+        <button class="adm-btn" id="rescoreBtn">Rescore Sentiment</button>
+        <div class="acc-status" id="rescoreStatus"></div>
       </div>
-      <button class="adm-btn" id="rescoreBtn">Rescore Sentiment</button>
-      <div class="acc-status" id="rescoreStatus"></div>
+
     </div>
   </section>
 

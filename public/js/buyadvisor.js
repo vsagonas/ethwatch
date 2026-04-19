@@ -114,16 +114,8 @@ document.addEventListener('DOMContentLoaded', () => {
   setInterval(updateLivePrice, 5000);
 
   document.getElementById('buyChip')?.addEventListener('click', openBuyModal);
-  document.getElementById('buyChipRefresh')?.addEventListener('click', (e) => {
-    e.stopPropagation();
-    refreshAdvisor({ force: true });
-  });
   document.getElementById('buyModalClose')?.addEventListener('click', closeBuyModal);
   document.getElementById('buyModalBackdrop')?.addEventListener('click', closeBuyModal);
-  // Use a delegate for the refresh button since it's inside the modal.
-  document.addEventListener('click', (e) => {
-    if (e.target?.id === 'buyAdvisorRefresh') refreshAdvisor({ force: true });
-  });
   // Re-render the cached recommendation whenever currency flips.
   document.querySelectorAll('.currency-btn').forEach(btn => {
     btn.addEventListener('click', () => setTimeout(() => { if (latestRec) paintAdvisor(latestRec); }, 50));
