@@ -187,9 +187,39 @@ function scrollStripToToday() {
 }
 window.scrollStripToToday = scrollStripToToday;
 
-// These are now no-ops kept for backward compat with all callers in app.js / candlestick.js.
-function positionStripOnChart() {}
-function positionCandleStrip() {}
+// Sync strip scroll to the visible left edge of the line chart (Chart.js).
+function positionStripOnChart(chart) {
+  chart = chart || window.priceChart || null;
+  if (!chart) chart = (typeof priceChart !== 'undefined' ? priceChart : null);
+  if (!chart?.scales?.x) return;
+  const leftTs = chart.scales.x.min;
+  if (isFinite(leftTs)) syncStripScroll(leftTs);
+}
+
+// Sync strip scroll to the visible left edge of the candle chart (LW Charts).
+function positionCandleStrip() {
+  const chart = window.lwChartApi;
+  if (!chart || typeof chart.timeScale !== 'function') return;
+  const range = chart.timeScale().getVisibleRange();
+  if (range?.from) syncStripScroll(range.from * 1000);
+}
+
+// Scroll the strip so the card nearest to leftTs is at the left edge.
+function syncStripScroll(leftTs) {
+  const strip = document.getElementById('monthStrip');
+  if (!strip) return;
+  const cols = [...strip.querySelectorAll('.day-col')];
+  if (!cols.length) return;
+  let bestCol = null, bestDiff = Infinity;
+  cols.forEach(col => {
+    const ts = parseInt(col.dataset.ts);
+    if (!isFinite(ts)) return;
+    const diff = Math.abs(ts - leftTs);
+    if (diff < bestDiff) { bestDiff = diff; bestCol = col; }
+  });
+  if (bestCol) strip.scrollLeft = Math.max(0, bestCol.offsetLeft - 6);
+}
+
 window.positionStripOnChart = positionStripOnChart;
 window.positionCandleStrip = positionCandleStrip;
 
