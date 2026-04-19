@@ -529,6 +529,11 @@ function getPredictions(limit = 100, type = null) {
   return rows.map(r => ({ ...r, raw_result: r.raw_result ? JSON.parse(r.raw_result) : null }));
 }
 
+const deletePredictionStmt = db.prepare(`DELETE FROM prediction_history WHERE id = ?`);
+function deletePrediction(id) {
+  return deletePredictionStmt.run(id).changes;
+}
+
 const resolvePredictionStmt = db.prepare(`
   UPDATE prediction_history
   SET actual_eth_price = ?, actual_move_pct = ?, accuracy_score = ?, resolved_ts = ?
@@ -618,5 +623,5 @@ module.exports = {
   insertTradesBatch, getTradeSummary,
   saveMarketVitals, getLatestVitals,
   saveBuyRecommendation, getLatestBuyRecommendation,
-  savePrediction, getPredictions, resolvePrediction, getUnresolvedPredictions,
+  savePrediction, getPredictions, deletePrediction, resolvePrediction, getUnresolvedPredictions,
 };

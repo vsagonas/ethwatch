@@ -446,7 +446,7 @@ function buildPriceChart(histJson) {
         const confStr  = conf != null ? ` <span class="lwt-move" style="color:${dirColor}">${conf}% conf</span>` : '';
 
         lineTip.innerHTML = `
-          <div class="lwt-time">${dateStr} · AI FORECAST</div>
+          <div class="lwt-time">${dateStr} · FORECAST</div>
           <div class="lwt-close" style="color:${dirColor}">${fmt(fcPrice)} <span class="lwt-move">${dirSym} ${dir.toUpperCase()}</span>${confStr}</div>
           ${rangeStr}`;
 
@@ -498,6 +498,24 @@ function buildPriceChart(histJson) {
 
   window.priceChart = priceChart;
   window.buildPriceChart = buildPriceChart;
+
+  // ── Pan buttons (‹ ›) ────────────────────────────────────
+  const panStep = () => Math.round(canvas.offsetWidth * 0.2);
+  document.getElementById('linePanLeft')?.addEventListener('click', () => {
+    priceChart?.pan({ x: panStep() });
+  });
+  document.getElementById('linePanRight')?.addEventListener('click', () => {
+    priceChart?.pan({ x: -panStep() });
+  });
+
+  // ── Two-finger trackpad horizontal scroll ────────────────
+  canvas.addEventListener('wheel', e => {
+    if (!priceChart) return;
+    if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+      e.preventDefault();
+      priceChart.pan({ x: -e.deltaX });
+    }
+  }, { passive: false });
 
   // If an Oracle prediction is currently active, re-attach its overlay.
   window.renderPredictionOverlay?.();
@@ -1128,7 +1146,7 @@ window.renderPredictionOverlay = function renderPredictionOverlay({ focus = fals
       }
       priceChart.data.datasets.push({
         __prediction: true,
-        label: prophecy.__kind === 'forecast7d' ? 'AI 7-day forecast' : 'Oracle prediction',
+        label: prophecy.__kind === 'forecast7d' ? '7-day forecast' : 'Oracle prediction',
         data: points,
         borderColor: color,
         backgroundColor: 'transparent',
@@ -1183,7 +1201,7 @@ window.renderPredictionOverlay = function renderPredictionOverlay({ focus = fals
         lineStyle: LightweightCharts.LineStyle.Dashed,
         priceLineVisible: false,
         lastValueVisible: true,
-        title: prophecy.__kind === 'forecast7d' ? 'AI 7d' : 'Oracle',
+        title: prophecy.__kind === 'forecast7d' ? '7d forecast' : 'Oracle',
         crosshairMarkerVisible: true,
       });
       // Strip any trajectory points that fall BEFORE or AT the last candle —

@@ -846,17 +846,31 @@ canvas { display: block; width: 100% !important; }
   .hero-inner { flex-direction: column; }
   .stats-grid { grid-template-columns: repeat(2, 1fr); }
   .price-value { font-size: 38px; }
-  .chart-controls { gap: 8px; }
+  .chart-controls { gap: 8px; flex-wrap: wrap; }
   .range-btn, .ind-btn { padding: 4px 8px; font-size: 11px; }
   .section { padding: 0 16px; }
-  .header { padding: 12px 16px; }
+  .header { padding: 10px 14px; flex-wrap: wrap; gap: 6px; }
+  .header-center { display: none; }
   .alert-input-group { flex-direction: column; }
   .alert-select, .alert-input, .alert-add-btn { width: 100%; }
+  .footer { padding: 16px; }
+  .footer-inner { font-size: 11px; }
+  .footer-meta { font-size: 11px; flex-wrap: wrap; justify-content: center; gap: 4px; }
+}
+
+@media (max-width: 900px) {
+  .header-center { max-width: 100%; overflow: hidden; }
+  .hof-trades { display: none; }
 }
 
 @media (max-width: 480px) {
   .stats-grid { grid-template-columns: 1fr 1fr; }
   .indicator-toggles { display: none; }
+  .header-left .subtitle { display: none; }
+  .brand { font-size: 15px; }
+  .chart-controls .save-set-btn,
+  .chart-controls .rescore-btn,
+  .chart-controls .export-btn { display: none; }
 }
 
 /* ── 30-DAY SENTIMENT STRIP ──────────────────────────────── */
@@ -1594,6 +1608,31 @@ canvas { display: block; width: 100% !important; }
 .zoom-out-btn:hover { background: rgba(88,166,255,0.10) !important; }
 
 .rescore-btn { margin-left: auto; }
+
+/* ── CHART PAN BUTTONS ───────────────────────────────────── */
+.chart-pan-btn {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 10;
+  width: 28px;
+  height: 48px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg2);
+  color: var(--text2);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.55;
+  transition: opacity 0.15s, background 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.chart-pan-btn:hover { opacity: 1; background: var(--bg3); color: var(--accent); }
+.chart-pan-left  { left: 4px; }
+.chart-pan-right { right: 4px; }
 
 /* ── HERO RESTRUCTURE: minimal stats + inline Order Flow ───────────────── */
 .price-minimal-stats {

@@ -18,7 +18,7 @@
 
   function typeLabel(t) {
     if (t === 'oracle') return 'Oracle';
-    if (t === 'ai_forecast') return 'AI Forecast';
+    if (t === 'ai_forecast') return 'Forecast';
     if (t === 'pattern') return 'Pattern';
     return t;
   }
@@ -94,7 +94,7 @@
       if (!json.success) throw new Error(json.error);
 
       if (!json.predictions.length) {
-        list.innerHTML = `<div class="oracle-empty">No predictions yet. Run the Oracle, AI Forecast, or Pattern Prediction to start building history.</div>`;
+        list.innerHTML = `<div class="oracle-empty">No predictions yet. Run the Oracle, Forecast, or Pattern Prediction to start building history.</div>`;
         return;
       }
 

@@ -195,11 +195,11 @@ body > *:not(.sky) { position: relative; z-index: 1; }
 
 .wx-fc-card {
   flex: 0 0 auto; min-width: 120px; padding: 14px 12px; text-align: center;
-  cursor: pointer; transition: transform 0.2s, box-shadow 0.2s;
+  cursor: pointer; transition: box-shadow 0.2s, border-color 0.2s;
   border-radius: var(--r); border: 1px solid var(--glass-brd);
   background: var(--glass-bg); backdrop-filter: blur(12px);
 }
-.wx-fc-card:hover { transform: translateY(-4px); box-shadow: 0 8px 32px rgba(0,0,0,0.4); border-color: var(--accent); }
+.wx-fc-card:hover { box-shadow: 0 4px 20px rgba(0,0,0,0.35); border-color: var(--accent); }
 .wx-fc-card.today { border-color: var(--accent); background: rgba(96,165,250,0.1); }
 .wx-fc-card .fc-day { font-size: 0.65rem; letter-spacing: 1px; text-transform: uppercase; color: var(--text-dim); margin-bottom: 6px; }
 .wx-fc-card .fc-icon { font-size: 2.2rem; line-height: 1; margin-bottom: 6px; }

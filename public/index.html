@@ -100,12 +100,12 @@
         <div class="price-main">
           <span class="price-symbol" id="priceSymbol">$</span>
           <span class="price-value" id="priceValue">—</span>
-          <button class="buy-chip buy-chip-inline" id="buyChip" title="Click for full AI reasoning">
+          <button class="buy-chip buy-chip-inline" id="buyChip" title="Click for full reasoning">
             <span class="buy-chip-verdict" id="baVerdict">—</span>
             <span class="buy-chip-conf" id="baConfidence">—</span>
             <span class="buy-chip-price" id="baChipPrice" title="Live ETH price">—</span>
           </button>
-          <button class="buy-chip-refresh" id="buyChipRefresh" title="Force a fresh AI recommendation">↻</button>
+          <button class="buy-chip-refresh" id="buyChipRefresh" title="Force a fresh recommendation">↻</button>
 
         </div>
         <div class="price-meta">
@@ -123,9 +123,9 @@
         <div class="last-updated" id="lastUpdated">Fetching…</div>
         <!-- AI 7-day forecast chip — sits inline with the price row.
              Main button toggles the overlay on/off; ⓘ opens the detail modal. -->
-        <button class="ai-forecast-chip" id="aiVerdictBigBtn" title="Toggle Claude 7-day forecast overlay on the chart">
+        <button class="ai-forecast-chip" id="aiVerdictBigBtn" title="Toggle 7-day forecast overlay on the chart">
           <span class="afc-icon">🧠</span>
-          <span class="afc-title">AI FORECAST</span>
+          <span class="afc-title">FORECAST</span>
         </button>
         <button class="ai-forecast-info" id="aiForecastInfoBtn" title="View forecast detail">ⓘ</button>
       </div>
@@ -136,7 +136,7 @@
         <div class="day-modal-panel forecast-modal-panel" role="dialog" aria-modal="true">
           <div class="dm-header">
             <div>
-              <div class="dm-date">AI 7-Day Forecast</div>
+              <div class="dm-date">7-Day Forecast</div>
               <div class="dm-date-sub" id="forecastGeneratedTs"></div>
             </div>
             <button class="close-btn" id="forecastClose">✕</button>
@@ -210,7 +210,7 @@
         <div class="day-modal-panel" id="buyModalPanel" role="dialog" aria-modal="true">
           <div class="dm-header">
             <div>
-              <div class="dm-date">Buy Time — AI Recommendation</div>
+              <div class="dm-date">Buy Time — Recommendation</div>
               <div class="dm-date-sub" id="baGeneratedTs"></div>
             </div>
             <button class="close-btn" id="buyModalClose">✕</button>
@@ -259,7 +259,7 @@
           <button class="range-btn" data-days="365">1Y</button>
         </div>
         <button class="save-set-btn" id="dayInfoToggleBtn" title="Show/hide day details and month strip">📋 Day Details</button>
-        <button class="reset-prediction-btn" id="resetPredictionBtn" title="Turn off the AI forecast, wipe it from storage, and reset the chart to the default 1W view">↺ Reset Prediction</button>
+        <button class="reset-prediction-btn" id="resetPredictionBtn" title="Turn off forecast, wipe it from storage, and reset the chart to the default 1W view">↺ Reset Prediction</button>
         <button class="export-btn" id="exportBtn" title="Export chart as PNG">Export</button>
         <button class="save-set-btn rescore-btn" id="rescoreBtn" title="Re-run Claude verdicts for the last 30 days">↻ Rescore</button>
       </div>
@@ -287,6 +287,8 @@
         </div>
         <canvas id="priceChart"></canvas>
         <div id="lineTooltip" class="lw-tooltip" style="display:none;"></div>
+        <button class="chart-pan-btn chart-pan-left" id="linePanLeft" title="Scroll left">‹</button>
+        <button class="chart-pan-btn chart-pan-right" id="linePanRight" title="Scroll right">›</button>
       </div>
 
       <div class="month-legend chart-strip-legend">
@@ -327,6 +329,8 @@
         </div>
         <div id="lwChart" style="height:100%;"></div>
         <div id="lwTooltip" class="lw-tooltip" style="display:none;"></div>
+        <button class="chart-pan-btn chart-pan-left" id="candlePanLeft" title="Scroll left">‹</button>
+        <button class="chart-pan-btn chart-pan-right" id="candlePanRight" title="Scroll right">›</button>
       </div>
 
       <div class="candle-legend">
@@ -351,7 +355,7 @@
   <!-- PATTERN PREDICTION RESULT — shown directly under chart when a pattern is found -->
   <section class="section" id="predictionSection" style="display:none;">
     <div class="section-header">
-      <h2 class="section-title">AI Pattern Prediction</h2>
+      <h2 class="section-title">Pattern Prediction</h2>
       <button class="close-btn" id="closePrediction">✕ Close</button>
     </div>
     <div id="predictionResult"></div>
@@ -442,7 +446,7 @@
         <select id="predHistFilter" class="alert-select" style="font-size:12px;padding:4px 8px;">
           <option value="">All types</option>
           <option value="oracle">Oracle</option>
-          <option value="ai_forecast">AI Forecast</option>
+          <option value="ai_forecast">Forecast</option>
           <option value="pattern">Pattern</option>
         </select>
         <p class="section-desc" style="margin:0;">All predictions saved with accuracy tracking</p>
@@ -456,11 +460,11 @@
   <!-- AI news summary popup (invoked from the footer button) -->
   <div class="ai-summary-panel floating" id="aiSummaryPanel" style="display:none;">
     <div class="ai-summary-header">
-      <span class="ai-summary-title">AI News Analysis (last 24h)</span>
+      <span class="ai-summary-title">News Analysis (last 24h)</span>
       <button class="close-btn" id="closeAiSummary">✕</button>
     </div>
     <div id="aiSummaryContent">
-      <div class="ai-loading"><div class="spinner"></div> Analyzing news with AI…</div>
+      <div class="ai-loading"><div class="spinner"></div> Analyzing news…</div>
     </div>
   </div>
 
@@ -532,13 +536,11 @@
         <div class="marquee-track" id="marqueeTrackA"></div>
         <div class="marquee-track" id="marqueeTrackB"></div>
       </div>
-      <button class="ai-analyze-btn marquee-ai-btn" id="aiAnalyzeBtn" title="AI sentiment of last 24h headlines">🤖 AI</button>
+      <button class="ai-analyze-btn marquee-ai-btn" id="aiAnalyzeBtn" title="Sentiment analysis of last 24h headlines">🤖 Analyze</button>
     </div>
 
     <div class="footer-meta">
-      <span>Prices: <a href="https://www.coingecko.com" target="_blank" rel="noopener">CoinGecko</a></span>
-      <span class="footer-sep">·</span>
-      <span>Order Flow: <a href="https://binance.com" target="_blank" rel="noopener">Binance</a></span>
+      <span>Made by <strong>Vasileios Sagonas</strong> · <a href="mailto:vsag@mac.com">vsag@mac.com</a></span>
       <span class="footer-sep">·</span>
       <span>Updates every 30 seconds</span>
       <span class="footer-sep">·</span>
@@ -563,7 +565,7 @@
         <span>Live News Feed</span>
       </div>
       <div class="news-popup-actions">
-        <button class="ai-analyze-btn" id="newsPopupAiBtn" title="AI sentiment of last 24h headlines">🤖 AI</button>
+        <button class="ai-analyze-btn" id="newsPopupAiBtn" title="Sentiment analysis of last 24h headlines">🤖 Analyze</button>
         <button class="close-btn" id="newsPopupClose" title="Close">✕</button>
       </div>
     </div>

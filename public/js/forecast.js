@@ -66,7 +66,7 @@ function setBtnBusy(busy) {
   if (btn) btn.classList.toggle('busy', busy);
 }
 
-// The button label is ALWAYS "AI FORECAST" — no verdict info inside.
+// The button label is ALWAYS "FORECAST" — no verdict info inside.
 // Direction is revealed inside the popup and on the chart overlay only.
 function paintChipSummary() { /* no-op */ }
 
@@ -233,7 +233,7 @@ function renderForecastDayCards(forecast) {
         <div class="day-tile forecast-tile ${cls}">
           <div class="dt-date">D${d.day} · ${dayLabel}</div>
           <div class="dt-move">${pct >= 0 ? '+' : ''}${Number(pct).toFixed(2)}%</div>
-          <div class="dt-verdict">AI FORECAST</div>
+          <div class="dt-verdict">FORECAST</div>
           <div class="dt-fc-price">${priceStr}</div>
           <div class="dt-extras">
             ${d.narrative ? `<div class="dt-fc-narrative">${fcEscape(d.narrative)}</div>` : ''}

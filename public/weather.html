@@ -77,9 +77,12 @@
 <section class="wx-section">
   <div class="wx-section-header">
     <span class="wx-section-icon">🔮</span>
-    <span class="wx-section-title">7-DAY AI FORECAST</span>
+    <span class="wx-section-title">7-DAY FORECAST</span>
   </div>
-  <div class="wx-forecast-meta glass" id="forecastMeta" style="display:none">
+  <div class="wx-forecast-strip" id="forecastStrip">
+    <div class="wx-loading">Loading forecast…</div>
+  </div>
+  <div class="wx-forecast-meta glass" id="forecastMeta" style="display:none;margin-top:16px">
     <div class="fm-headline" id="fmHeadline">—</div>
     <div class="fm-row">
       <span class="fm-badge" id="fmDirection">—</span>
@@ -88,9 +91,6 @@
     </div>
     <div class="fm-narrative" id="fmNarrative">—</div>
     <div class="fm-pattern" id="fmPattern">—</div>
-  </div>
-  <div class="wx-forecast-strip" id="forecastStrip">
-    <div class="wx-loading">Loading forecast…</div>
   </div>
 </section>
 
@@ -152,52 +152,6 @@
   </div>
 </section>
 
-<!-- ── STORM ALERTS ───────────────────────────────────── -->
-<section class="wx-section">
-  <div class="wx-section-header">
-    <span class="wx-section-icon">🚨</span>
-    <span class="wx-section-title">STORM ALERTS &amp; ADVISORIES</span>
-  </div>
-  <div class="wx-alerts" id="alertsContainer">
-    <div class="wx-loading">Loading alerts…</div>
-  </div>
-</section>
-
-<!-- ── ALTERNATE FORECASTS ──────────────────────────────── -->
-<section class="wx-section" id="alternatesSection" style="display:none">
-  <div class="wx-section-header">
-    <span class="wx-section-icon">📂</span>
-    <span class="wx-section-title">PAST FORECASTS</span>
-  </div>
-  <div class="alt-fc-list" id="alternatesList"></div>
-</section>
-
-<!-- ── 30-DAY CLIMATE HISTORY ─────────────────────────── -->
-<section class="wx-section">
-  <div class="wx-section-header">
-    <span class="wx-section-icon">📅</span>
-    <span class="wx-section-title">30-DAY CLIMATE HISTORY</span>
-  </div>
-  <div class="wx-climate-strip" id="climateStrip">
-    <div class="wx-loading">Loading climate history…</div>
-  </div>
-</section>
-
-<!-- ── DAY DETAIL MODAL ───────────────────────────────── -->
-<div class="wx-modal-backdrop" id="dayModal" style="display:none">
-  <div class="wx-modal glass">
-    <button class="wx-modal-close" id="dayModalClose">✕</button>
-    <div class="wx-modal-header">
-      <span class="wm-icon" id="dmIcon">⛅</span>
-      <div>
-        <div class="wm-date" id="dmDate">—</div>
-        <div class="wm-condition" id="dmCondition">—</div>
-      </div>
-    </div>
-    <div class="wx-modal-body" id="dmBody">—</div>
-  </div>
-</div>
-
 <!-- ── FORECAST DAY MODAL ─────────────────────────────── -->
 <div class="wx-modal-backdrop" id="fcDayModal" style="display:none">
   <div class="wx-modal glass">
@@ -206,7 +160,7 @@
       <span class="wm-icon" id="fcdIcon">🔮</span>
       <div>
         <div class="wm-date" id="fcdDate">—</div>
-        <div class="wm-condition" id="fcdCondition">AI FORECAST</div>
+        <div class="wm-condition" id="fcdCondition">FORECAST</div>
       </div>
     </div>
     <div class="wx-modal-body" id="fcdBody">—</div>
@@ -215,7 +169,7 @@
 
 <!-- ── FOOTER ─────────────────────────────────────────── -->
 <footer class="wx-footer">
-  <div>ETHWEATHER — Powered by Claude AI + CoinGecko + NewsAPI</div>
+  <div>Made by <strong>Vasileios Sagonas</strong> · <a href="mailto:vsag@mac.com" class="wx-footer-link">vsag@mac.com</a></div>
   <div><a href="/" class="wx-footer-link">← Back to ETHWATCH</a></div>
 </footer>
 

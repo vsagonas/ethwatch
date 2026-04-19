@@ -108,14 +108,24 @@ function initPeriodPicker() {
   });
 }
 
-// ── RUN NEW AI FORECAST ───────────────────────────────────────────
+// ── RUN FORECAST ─────────────────────────────────────────────────
 function initRunForecast() {
   let selectedDays = 90;
+  let selectedBias = 'neutral';
+
+  // Bias picker
+  document.querySelectorAll('#biasPicker .days-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('#biasPicker .days-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      selectedBias = btn.dataset.bias;
+    });
+  });
 
   // Days picker
-  document.querySelectorAll('.days-btn').forEach(btn => {
+  document.querySelectorAll('#daysPicker .days-btn').forEach(btn => {
     btn.addEventListener('click', () => {
-      document.querySelectorAll('.days-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('#daysPicker .days-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       selectedDays = parseInt(btn.dataset.days);
     });
@@ -125,18 +135,19 @@ function initRunForecast() {
   const status = document.getElementById('forecastStatus');
   btn.addEventListener('click', async () => {
     btn.disabled = true;
+    const biasLabel = selectedBias === 'bullish' ? 'UPWARD bias' : selectedBias === 'bearish' ? 'DOWNWARD bias' : 'neutral';
     const label = selectedDays === 90 ? '3 months' : selectedDays === 30 ? '1 month' : selectedDays === 15 ? '15 days' : '7 days';
-    setStatus(status, `⏳ Running Claude forecast using last ${label} of data (30–90s)…`, 'running');
+    setStatus(status, `⏳ Running forecast (${biasLabel}, ${label} data)… 30–90s`, 'running');
     try {
       const res = await fetch('/api/admin/run-forecast', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ history_days: selectedDays }),
+        body: JSON.stringify({ history_days: selectedDays, bias: selectedBias }),
       }).then(r => r.json());
       if (res.success) {
         const d = res.data;
         setStatus(status,
-          `✓ Done — ${(d?.direction || '').toUpperCase()} ${fmtPct(d?.expected_move_pct)} · ${d?.history_days ?? selectedDays}d window · Now live on Watch + Weather`,
+          `✓ Done — ${(d?.direction || '').toUpperCase()} ${fmtPct(d?.expected_move_pct)} · ${d?.history_days ?? selectedDays}d · ${biasLabel} · Live on Watch + Weather`,
           'ok');
         loadPredictions();
       } else {
@@ -253,11 +264,11 @@ async function loadPredictions() {
     const liveTs  = liveRes?.data?.generated_ts || liveRes?.data?.anchor_ts || null;
 
     const res = await fetch('/api/predictions/history?limit=200&type=ai_forecast').then(r => r.json());
-    if (!res.success) { tbody.innerHTML = `<tr><td colspan="11" class="adm-loading">Error: ${escHtml(res.error)}</td></tr>`; return; }
+    if (!res.success) { tbody.innerHTML = `<tr><td colspan="12" class="adm-loading">Error: ${escHtml(res.error)}</td></tr>`; return; }
     const rows = res.predictions || [];
     document.getElementById('predCount').textContent = `(${rows.length})`;
 
-    if (!rows.length) { tbody.innerHTML = '<tr><td colspan="11" class="adm-loading">No predictions yet.</td></tr>'; return; }
+    if (!rows.length) { tbody.innerHTML = '<tr><td colspan="12" class="adm-loading">No predictions yet.</td></tr>'; return; }
 
     tbody.innerHTML = rows.map((p, i) => {
       const fc       = p.raw_result;
@@ -278,10 +289,13 @@ async function loadPredictions() {
         ? `<button class="adm-btn set-live-btn ${isLive ? 'primary' : ''}" data-id="${p.id}" title="Make this the live forecast on Watch+Weather">${isLive ? '✓ LIVE' : 'Set Live'}</button>`
         : '<span class="dim">—</span>';
 
+      const delBtn = `<button class="adm-btn del-fc-btn" data-id="${p.id}" title="Delete this forecast" style="padding:2px 8px;font-size:0.7rem;color:var(--down);border-color:var(--down)">🗑</button>`;
+
       return `<tr class="${isLive ? 'row-latest' : ''}">
         <td>${liveBtn}</td>
+        <td>${delBtn}</td>
         <td class="dim">${escHtml(fmtTs(p.created_ts))}</td>
-        <td><span class="badge ${isManual ? 'manual' : 'ai'}">${isManual ? 'MANUAL' : 'AI'}</span>${histDays ? `<span style="font-size:0.65rem;color:var(--text-dim);margin-left:4px">${histDays}d</span>` : ''}</td>
+        <td><span class="badge ${isManual ? 'manual' : 'ai'}">${isManual ? 'MANUAL' : 'AUTO'}</span>${histDays ? `<span style="font-size:0.65rem;color:var(--text-dim);margin-left:4px">${histDays}d</span>` : ''}</td>
         <td><span class="badge ${dirCls}">${escHtml(dir.toUpperCase())}</span></td>
         <td style="color:${dir==='bullish'?'var(--up)':dir==='bearish'?'var(--down)':'var(--neutral)'};font-weight:700">${fmtPct(p.predicted_move_pct)}</td>
         <td class="dim">${p.confidence != null ? p.confidence + '%' : '—'}</td>
@@ -302,10 +316,28 @@ async function loadPredictions() {
         try {
           const r = await fetch(`/api/admin/set-live-forecast/${id}`, { method: 'POST' }).then(x => x.json());
           if (r.success) {
-            await loadPredictions(); // reload table to show updated LIVE badge
+            await loadPredictions();
           } else {
             btn.textContent = '✗';
             setTimeout(() => { btn.disabled = false; btn.textContent = 'Set Live'; }, 1500);
+          }
+        } catch { btn.textContent = '✗'; btn.disabled = false; }
+      });
+    });
+
+    // Wire Delete buttons
+    tbody.querySelectorAll('.del-fc-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        if (!confirm('Delete this forecast from the database?')) return;
+        const id = parseInt(btn.dataset.id);
+        btn.disabled = true;
+        try {
+          const r = await fetch(`/api/admin/prediction/${id}`, { method: 'DELETE' }).then(x => x.json());
+          if (r.success) {
+            await loadPredictions();
+          } else {
+            btn.textContent = '✗';
+            setTimeout(() => { btn.disabled = false; btn.textContent = '🗑'; }, 1500);
           }
         } catch { btn.textContent = '✗'; btn.disabled = false; }
       });

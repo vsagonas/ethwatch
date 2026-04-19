@@ -187,10 +187,19 @@ function gatherContext(historyDays = 90) {
   };
 }
 
-async function buildForecast({ historyDays = 90 } = {}) {
+async function buildForecast({ historyDays = 90, bias = 'neutral' } = {}) {
   if (!process.env.ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY not configured');
 
   const context = gatherContext(historyDays);
+
+  // Optional bias directive appended to user message
+  let biasNote = '';
+  if (bias === 'bullish') {
+    biasNote = '\n\n⚡ DIRECTIVE: Generate a BULLISH / UPWARD continuation forecast. Find the bullish analog that best fits the current setup. The overall expected_move_pct MUST be positive. Model an upward trajectory with realistic pullbacks along the way.';
+  } else if (bias === 'bearish') {
+    biasNote = '\n\n⚡ DIRECTIVE: Generate a BEARISH / DOWNWARD continuation forecast. Find the bearish analog that best fits the current setup. The overall expected_move_pct MUST be negative. Model a downward trajectory with realistic relief bounces along the way.';
+  }
+
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   const resp = await client.messages.create({
     model: 'claude-sonnet-4-6',
@@ -198,7 +207,7 @@ async function buildForecast({ historyDays = 90 } = {}) {
     system: SYSTEM_PROMPT,
     tools: [FORECAST_TOOL],
     tool_choice: { type: 'tool', name: 'submit_forecast' },
-    messages: [{ role: 'user', content: JSON.stringify(context) }],
+    messages: [{ role: 'user', content: JSON.stringify(context) + biasNote }],
   });
 
   const toolUse = resp.content?.find(c => c.type === 'tool_use' && c.name === 'submit_forecast');
@@ -211,6 +220,7 @@ async function buildForecast({ historyDays = 90 } = {}) {
   forecast.anchor_price  = context.current_eth_price_usd;
   forecast.horizon       = '7d';
   forecast.history_days  = context.history_days;
+  if (bias !== 'neutral') forecast.bias = bias;
 
   // Persist to prediction history
   try {
@@ -232,7 +242,7 @@ async function buildForecast({ historyDays = 90 } = {}) {
   return forecast;
 }
 
-async function getForecast({ force = false, historyDays = 90 } = {}) {
+async function getForecast({ force = false, historyDays = 90, bias = 'neutral' } = {}) {
   if (!force && cache.data && Date.now() - cache.ts < TTL) return cache.data;
   // DB fallback — serve latest stored forecast immediately if available
   if (!force && !cache.data) {
@@ -243,7 +253,7 @@ async function getForecast({ force = false, historyDays = 90 } = {}) {
       return cache.data;
     }
   }
-  const data = await buildForecast({ historyDays });
+  const data = await buildForecast({ historyDays, bias });
   cache.data = data;
   cache.ts   = Date.now();
   return data;

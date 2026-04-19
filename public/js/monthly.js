@@ -301,7 +301,7 @@ function renderDayModal(date, row, detail, currency) {
           ${sent.macro_summary ? `<div class="dm-score-summary">${escapeHtml(sent.macro_summary)}</div>` : ''}
         </div>
       </div>
-      ${sent.summary ? `<div class="dm-ai-summary"><strong>Crypto AI verdict:</strong> ${escapeHtml(sent.summary)}</div>` : ''}
+      ${sent.summary ? `<div class="dm-ai-summary"><strong>Crypto verdict:</strong> ${escapeHtml(sent.summary)}</div>` : ''}
 
       <div class="dm-tabs" role="tablist">
         <button class="dm-tab active" role="tab" data-cat="crypto">📈 Crypto <span class="dm-tab-count">${crypto.length}</span></button>

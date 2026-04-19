@@ -6,9 +6,7 @@ const state = {
   currency: 'usd',
   price: null,
   forecast: null,
-  history: [],
   vitals: null,
-  todayDetail: null,
 };
 
 // ── WEATHER MAPPINGS ──────────────────────────────────────────────
@@ -90,50 +88,20 @@ function setSky(sky) {
 
 // ── DATA FETCHING ─────────────────────────────────────────────────
 async function fetchAll() {
-  // Forecast is fetched separately (can be slow — serves cached instantly)
-  const [priceRes, historyRes, vitalsRes] = await Promise.allSettled([
+  const [priceRes, vitalsRes] = await Promise.allSettled([
     fetch('/api/eth-price').then(r => r.json()),
-    fetch('/api/monthly-sentiment?days=30').then(r => r.json()),
     fetch('/api/market-vitals').then(r => r.json()),
   ]);
 
   if (priceRes.status === 'fulfilled' && priceRes.value.success) {
     state.price = priceRes.value.data;
   }
-  if (historyRes.status === 'fulfilled' && historyRes.value.success) {
-    state.history = historyRes.value.data || [];
-  }
   if (vitalsRes.status === 'fulfilled' && vitalsRes.value?.success) {
     state.vitals = vitalsRes.value.data || vitalsRes.value;
   }
-
-  // fetch today's detail for alerts
-  const today = new Date().toISOString().slice(0, 10);
-  try {
-    const det = await fetch(`/api/day-detail?date=${today}`).then(r => r.json());
-    if (det.success) state.todayDetail = det.data;
-  } catch {}
 }
 
-async function fetchForecastAndHistory() {
-  // Load past forecasts from DB immediately (no generation needed)
-  try {
-    const histRes = await fetch('/api/forecast-7d/history?limit=10').then(r => r.json());
-    if (histRes.success && histRes.forecasts?.length) {
-      state.forecastHistory = histRes.forecasts;
-      // Use the most recent as current if we don't have one yet
-      if (!state.forecast) {
-        const latest = histRes.forecasts[0];
-        if (latest?.raw_result) {
-          state.forecast = latest.raw_result;
-        }
-      }
-      renderForecast();
-      renderAlternates();
-    }
-  } catch {}
-
-  // Now fetch live (served from 30min in-memory cache — fast if warm)
+async function fetchForecast() {
   try {
     const fcRes = await fetch('/api/forecast-7d').then(r => r.json());
     if (fcRes.success && fcRes.data) {
@@ -141,10 +109,8 @@ async function fetchForecastAndHistory() {
       renderForecast();
     }
   } catch (err) {
-    if (!state.forecast) {
-      document.getElementById('forecastStrip').innerHTML =
-        `<div class="wx-loading">Forecast unavailable: ${escHtml(err.message)}. Click RE-RUN to generate.</div>`;
-    }
+    document.getElementById('forecastStrip').innerHTML =
+      `<div class="wx-loading">Forecast unavailable: ${escHtml(err.message)}. Visit <a href="/admin" style="color:inherit">Admin</a> to generate one.</div>`;
   }
 }
 
@@ -333,125 +299,6 @@ function renderVitals() {
   }
 }
 
-// ── STORM ALERTS ──────────────────────────────────────────────────
-function renderAlerts() {
-  const det = state.todayDetail;
-  const container = document.getElementById('alertsContainer');
-  const items = [];
-
-  const addItems = (arr, cat) => {
-    (arr || []).forEach(h => {
-      items.push({ cat, title: h.title, source: h.source || h.s || '' });
-    });
-  };
-
-  if (det) {
-    addItems(det.headlines       || det.top_headlines,       'crypto');
-    addItems(det.macro_headlines || det.top_macro_headlines, 'macro');
-    addItems(det.hope_headlines  || det.top_hope_headlines,  'hope');
-  }
-
-  if (!items.length) {
-    container.innerHTML = '<div class="wx-loading">No alerts today.</div>';
-    return;
-  }
-
-  const ICONS = { crypto: '🚨', macro: '⚠️', hope: '🌱' };
-  const LABELS = { crypto: 'CRYPTO ADVISORY', macro: 'MACRO STORM WARNING', hope: 'HOPE SIGNAL' };
-
-  container.innerHTML = items.map(it => `
-    <div class="wx-alert ${escHtml(it.cat)}">
-      <div class="wa-icon">${ICONS[it.cat] || '📰'}</div>
-      <div class="wa-content">
-        <div class="wa-level">${LABELS[it.cat] || it.cat.toUpperCase()}</div>
-        <div class="wa-title">${escHtml(it.title)}</div>
-        ${it.source ? `<div class="wa-source">${escHtml(it.source)}</div>` : ''}
-      </div>
-    </div>
-  `).join('');
-}
-
-// ── CLIMATE HISTORY ───────────────────────────────────────────────
-function renderClimate() {
-  const strip = document.getElementById('climateStrip');
-  const days  = state.history;
-  if (!days.length) {
-    strip.innerHTML = '<div class="wx-loading">No history.</div>';
-    return;
-  }
-
-  strip.innerHTML = '';
-  days.slice().reverse().forEach(day => {
-    const pct  = day.eth_move_pct;
-    const wx   = getWeather(pct ?? 0);
-    const cls  = (pct ?? 0) > 0.05 ? 'up' : (pct ?? 0) < -0.05 ? 'down' : 'neutral';
-    const dd   = new Date(day.date);
-    const lbl  = dd.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    const hope = day.hope_score;
-    const hopeH = hope != null ? Math.abs(hope - 50) * 2 : 0;
-    const hopeColor = hope != null ? (hope >= 50 ? 'rgba(52,211,153,0.6)' : 'rgba(248,113,113,0.5)') : 'transparent';
-
-    const card = document.createElement('div');
-    card.className = 'wx-cl-card';
-    card.innerHTML = `
-      <div class="cl-date">${escHtml(lbl)}</div>
-      <div class="cl-icon">${wx.icon}</div>
-      <div class="cl-move ${cls}">${fmtPct(pct)}</div>
-      <div class="cl-hope" style="background:${hopeColor}; height:${Math.max(2, hopeH * 0.15)}px"></div>
-    `;
-    card.addEventListener('click', () => openDayModal(day, wx));
-    strip.appendChild(card);
-  });
-}
-
-// ── DAY MODAL ─────────────────────────────────────────────────────
-function openDayModal(day, wx) {
-  const modal = document.getElementById('dayModal');
-  document.getElementById('dmIcon').textContent      = wx?.icon || '⛅';
-  document.getElementById('dmDate').textContent      = day.date;
-  document.getElementById('dmCondition').textContent = wx?.cond || '';
-
-  const cur = state.currency;
-  let html = '';
-
-  html += `<h4>MARKET DATA</h4>`;
-  html += stat('ETH Close', fmtPrice(day.eth_price, cur));
-  html += stat('ETH Move', fmtPct(day.eth_move_pct));
-  html += stat('BTC Move', fmtPct(day.btc_move_pct));
-  html += stat('Verdict', day.verdict || '—');
-  if (day.hope_score != null) html += stat('Hope Score', day.hope_score + '/100');
-  if (day.macro_score != null) html += stat('Macro Score', day.macro_score + '/100 (−100..+100)');
-
-  if (day.summary) {
-    html += `<h4>CLIMATE SUMMARY</h4><div class="mo-narrative">${escHtml(day.summary)}</div>`;
-  }
-  if (day.hope_summary) {
-    html += `<h4>HOPE REPORT</h4><div class="mo-narrative">${escHtml(day.hope_summary)}</div>`;
-  }
-  if (day.macro_summary) {
-    html += `<h4>MACRO CONDITIONS</h4><div class="mo-narrative">${escHtml(day.macro_summary)}</div>`;
-  }
-
-  const headlines = day.top_headlines || [];
-  const macro     = day.top_macro_headlines || [];
-  const hope      = day.top_hope_headlines || [];
-
-  if (headlines.length) {
-    html += `<h4>🚨 CRYPTO ADVISORIES</h4>`;
-    headlines.forEach(h => { html += newsItem(h); });
-  }
-  if (macro.length) {
-    html += `<h4>⚠️ MACRO STORM WARNINGS</h4>`;
-    macro.forEach(h => { html += newsItem(h); });
-  }
-  if (hope.length) {
-    html += `<h4>🌱 HOPE SIGNALS</h4>`;
-    hope.forEach(h => { html += newsItem(h); });
-  }
-
-  document.getElementById('dmBody').innerHTML = html;
-  modal.style.display = 'flex';
-}
 
 // ── FORECAST DAY MODAL ────────────────────────────────────────────
 function openFcDayModal(d, wx, eodPrice, traj, fc) {
@@ -513,95 +360,6 @@ function openFcDayModal(d, wx, eodPrice, traj, fc) {
 function stat(label, val) {
   return `<div class="mo-stat"><span>${escHtml(label)}</span><span>${escHtml(String(val))}</span></div>`;
 }
-function newsItem(h) {
-  const src = h.source || h.s || '';
-  const ttl = h.title  || h.t || '';
-  return `<div class="mo-news-item">${src ? `<div class="mo-src">${escHtml(src)}</div>` : ''}<div>${escHtml(ttl)}</div></div>`;
-}
-
-// ── ALTERNATE FORECASTS ───────────────────────────────────────────
-function renderAlternates() {
-  const history = state.forecastHistory || [];
-  let container = document.getElementById('alternatesSection');
-  if (!container) return;
-
-  // Filter to past forecasts that differ from current (skip the very latest if it's the active one)
-  const current = state.forecast;
-  const currentTs = current?.generated_ts || current?.anchor_ts || 0;
-  const alts = history.filter(row => {
-    const fc = row.raw_result;
-    if (!fc?.daily_breakdown?.length) return false;
-    const ts = fc.generated_ts || fc.anchor_ts || row.created_ts;
-    return Math.abs(ts - currentTs) > 60000; // skip if same minute
-  });
-
-  if (!alts.length) {
-    container.style.display = 'none';
-    return;
-  }
-
-  container.style.display = 'block';
-  const list = document.getElementById('alternatesList');
-  list.innerHTML = alts.map((row, i) => {
-    const fc  = row.raw_result;
-    const ts  = fc?.generated_ts || fc?.anchor_ts || row.created_ts;
-    const lbl = ts ? new Date(ts).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
-    const dir = fc?.direction || row.predicted_direction || '—';
-    const pct = fc?.expected_move_pct ?? row.predicted_move_pct;
-    const cls = dir === 'bullish' ? 'up' : dir === 'bearish' ? 'down' : 'neutral';
-    const wx  = pct != null ? getWeather(pct) : { icon: '⛅' };
-    return `<div class="alt-fc-card glass" data-alt-index="${i}">
-      <div class="alt-icon">${wx.icon}</div>
-      <div class="alt-info">
-        <div class="alt-date">${escHtml(lbl)}</div>
-        <div class="alt-dir ${cls}">${escHtml(dir.toUpperCase())} ${pct != null ? fmtPct(pct) : ''}</div>
-        <div class="alt-head">${escHtml((fc?.headline || row.narrative || '').slice(0, 80))}</div>
-      </div>
-      <button class="alt-load-btn" data-alt-index="${i}">VIEW</button>
-    </div>`;
-  }).join('');
-
-  list.querySelectorAll('.alt-load-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const idx = parseInt(btn.dataset.altIndex);
-      const fc  = alts[idx]?.raw_result;
-      if (!fc) return;
-      state.forecast = fc;
-      renderForecast();
-      container.querySelectorAll('.alt-fc-card').forEach((c, ci) => {
-        c.classList.toggle('active', ci === idx);
-      });
-    });
-  });
-}
-
-// ── RE-RUN FORECAST ───────────────────────────────────────────────
-async function rerunForecast() {
-  const btn     = document.getElementById('rerunForecastBtn');
-  const spinner = document.getElementById('forecastSpinner');
-  btn.disabled  = true;
-  spinner.classList.add('active');
-  document.getElementById('forecastMeta').style.display = 'none';
-  document.getElementById('forecastStrip').innerHTML = '<div class="wx-loading">Generating AI forecast… (may take 30-60s)</div>';
-
-  try {
-    const res = await fetch('/api/forecast-7d?force=1').then(r => r.json());
-    if (res.success) {
-      state.forecast = res.data;
-      renderForecast();
-      // Refresh history list to include the new forecast
-      const histRes = await fetch('/api/forecast-7d/history?limit=10').then(r => r.json());
-      if (histRes.success) { state.forecastHistory = histRes.forecasts; renderAlternates(); }
-    } else {
-      document.getElementById('forecastStrip').innerHTML = `<div class="wx-loading">Error: ${escHtml(res.error || 'Unknown error')}</div>`;
-    }
-  } catch (err) {
-    document.getElementById('forecastStrip').innerHTML = `<div class="wx-loading">Network error: ${escHtml(err.message)}</div>`;
-  } finally {
-    btn.disabled = false;
-    spinner.classList.remove('active');
-  }
-}
 
 // ── CURRENCY TOGGLE ───────────────────────────────────────────────
 function initCurrencyToggle() {
@@ -618,23 +376,14 @@ function initCurrencyToggle() {
 
 // ── MODALS ────────────────────────────────────────────────────────
 function initModals() {
-  document.getElementById('dayModalClose').addEventListener('click', () => {
-    document.getElementById('dayModal').style.display = 'none';
-  });
   document.getElementById('fcDayModalClose').addEventListener('click', () => {
     document.getElementById('fcDayModal').style.display = 'none';
-  });
-  document.getElementById('dayModal').addEventListener('click', e => {
-    if (e.target === e.currentTarget) e.currentTarget.style.display = 'none';
   });
   document.getElementById('fcDayModal').addEventListener('click', e => {
     if (e.target === e.currentTarget) e.currentTarget.style.display = 'none';
   });
   document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') {
-      document.getElementById('dayModal').style.display   = 'none';
-      document.getElementById('fcDayModal').style.display = 'none';
-    }
+    if (e.key === 'Escape') document.getElementById('fcDayModal').style.display = 'none';
   });
 }
 
@@ -655,15 +404,11 @@ async function init() {
   initCurrencyToggle();
   initModals();
 
-  // Render other sections immediately (don't block on forecast)
   await fetchAll();
   renderCurrent();
   renderVitals();
-  renderAlerts();
-  renderClimate();
 
-  // Forecast loads asynchronously: DB history first, then live cache
-  fetchForecastAndHistory();
+  fetchForecast();
 
   setInterval(refreshPrice, 30000);
 }

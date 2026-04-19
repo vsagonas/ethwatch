@@ -152,7 +152,7 @@ async function runAISummary() {
   btn.textContent = '⏳ Analyzing…';
 
   document.getElementById('aiSummaryContent').innerHTML =
-    '<div class="ai-loading"><div class="spinner"></div> Analyzing news with AI…</div>';
+    '<div class="ai-loading"><div class="spinner"></div> Analyzing news…</div>';
 
   try {
     const res  = await fetch('/api/news/ai-summary', { method: 'POST' });
@@ -161,10 +161,10 @@ async function runAISummary() {
     renderAISummary(json);
   } catch (err) {
     document.getElementById('aiSummaryContent').innerHTML =
-      `<div class="news-empty">AI analysis failed: ${err.message}.<br>Make sure ANTHROPIC_API_KEY is set as an environment variable.</div>`;
+      `<div class="news-empty">Analysis failed: ${err.message}.<br>Make sure ANTHROPIC_API_KEY is set as an environment variable.</div>`;
   } finally {
     btn.disabled = false;
-    btn.textContent = '🤖 AI Sentiment Analysis';
+    btn.textContent = '🤖 Analyze';
   }
 }
 

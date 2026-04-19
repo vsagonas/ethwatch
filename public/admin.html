@@ -55,16 +55,25 @@
   <!-- ── AI CONTROLS ───────────────────────────── -->
   <section class="adm-section adm-controls-row">
     <div class="adm-control-card">
-      <div class="acc-title">🔮 AI FORECAST</div>
-      <div class="acc-desc">Force Claude to generate a fresh 7-day ETH forecast. Choose how many days of historical data to feed Claude for pattern matching. Result saves to DB and becomes the live forecast on Watch + Weather.</div>
-      <div class="apf-label" style="margin-bottom:6px">DATA WINDOW FOR PATTERN MATCHING</div>
-      <div class="adm-days-picker" id="daysPicker">
-        <button class="days-btn" data-days="7">Last 7 Days</button>
-        <button class="days-btn" data-days="15">Last 15 Days</button>
-        <button class="days-btn" data-days="30">Last Month</button>
-        <button class="days-btn active" data-days="90">Last 3 Months</button>
+      <div class="acc-title">🔮 FORECAST GENERATOR</div>
+      <div class="acc-desc">Generate a 7-day ETH forecast. Choose data window, forecast mode, then run.</div>
+
+      <div class="apf-label" style="margin-bottom:6px">MODE</div>
+      <div class="adm-days-picker" id="biasPicker">
+        <button class="days-btn active" data-bias="neutral">🎯 Today's Data</button>
+        <button class="days-btn" data-bias="bearish">📉 Force Downward</button>
+        <button class="days-btn" data-bias="bullish">📈 Force Upward</button>
       </div>
-      <button class="adm-btn primary" id="runForecastBtn">▶ Run New AI Forecast</button>
+
+      <div class="apf-label" style="margin-bottom:6px;margin-top:12px">DATA WINDOW</div>
+      <div class="adm-days-picker" id="daysPicker">
+        <button class="days-btn" data-days="7">7 Days</button>
+        <button class="days-btn" data-days="15">15 Days</button>
+        <button class="days-btn" data-days="30">1 Month</button>
+        <button class="days-btn active" data-days="90">3 Months</button>
+      </div>
+
+      <button class="adm-btn primary" id="runForecastBtn" style="margin-top:8px">▶ Run Forecast</button>
       <div class="acc-status" id="forecastStatus"></div>
     </div>
     <div class="adm-control-card">
@@ -129,6 +138,7 @@
         <thead>
           <tr>
             <th>Live</th>
+            <th>Del</th>
             <th>Date</th>
             <th>Type</th>
             <th>Direction</th>
@@ -142,7 +152,7 @@
           </tr>
         </thead>
         <tbody id="predTbody">
-          <tr><td colspan="10" class="adm-loading">Loading…</td></tr>
+          <tr><td colspan="12" class="adm-loading">Loading…</td></tr>
         </tbody>
       </table>
     </div>

@@ -1020,11 +1020,24 @@ app.get('/api/admin/stats', (req, res) => {
 // ── ADMIN: run new AI forecast (force) ───────────────────────────────────
 app.post('/api/admin/run-forecast', async (req, res) => {
   const historyDays = Math.max(7, Math.min(90, parseInt(req.body?.history_days) || 90));
+  const bias = ['bullish', 'bearish', 'neutral'].includes(req.body?.bias) ? req.body.bias : 'neutral';
   try {
-    const data = await forecast.getForecast({ force: true, historyDays });
+    const data = await forecast.getForecast({ force: true, historyDays, bias });
     res.json({ success: true, data });
   } catch (err) {
     res.status(502).json({ success: false, error: err.message });
+  }
+});
+
+// ── ADMIN: delete a forecast ──────────────────────────────────────────────
+app.delete('/api/admin/prediction/:id', (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const changes = dbm.deletePrediction(id);
+    if (!changes) return res.status(404).json({ success: false, error: 'Not found' });
+    res.json({ success: true, id });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 

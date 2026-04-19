@@ -233,7 +233,7 @@ function initCandlestickChart(ohlcData) {
       const confStr  = conf != null ? ` <span class="lwt-move" style="color:${dirColor}">${conf}% conf</span>` : '';
 
       tooltip.innerHTML = `
-        <div class="lwt-time">${dateStr} · AI FORECAST</div>
+        <div class="lwt-time">${dateStr} · FORECAST</div>
         <div class="lwt-close" style="color:${dirColor}">${fmt(fcPrice)} <span class="lwt-move">${dirSym} ${dir.toUpperCase()}</span>${confStr}</div>
         ${rangeStr}`;
 
@@ -263,7 +263,7 @@ function initCandlestickChart(ohlcData) {
       const conf = Math.round(prophecy.confidence * 100);
       const dir  = prophecy.direction || 'neutral';
       const dc   = dir === 'bullish' ? '#3fb950' : dir === 'bearish' ? '#f85149' : '#d29922';
-      fcBadge = `<div class="lwt-ohlc" style="margin-top:6px;border-top:1px solid rgba(255,255,255,0.08);padding-top:4px"><span style="color:${dc}">AI ${dir.toUpperCase()} · ${conf}% conf</span></div>`;
+      fcBadge = `<div class="lwt-ohlc" style="margin-top:6px;border-top:1px solid rgba(255,255,255,0.08);padding-top:4px"><span style="color:${dc}">${dir.toUpperCase()} · ${conf}% conf</span></div>`;
     }
 
     tooltip.innerHTML = `
@@ -332,6 +332,35 @@ function initCandlestickChart(ohlcData) {
   // Avoid the `window.lwChart` name — there is a <div id="lwChart"> which
   // browsers auto-expose at that key, which would shadow the chart instance.
   window.lwChartApi = lwChart;
+
+  // ── Pan buttons (‹ ›) ──────────────────────────────────
+  const candlePanStep = () => {
+    const range = lwChart.timeScale().getVisibleLogicalRange();
+    if (!range) return;
+    const step = (range.to - range.from) * 0.2;
+    lwChart.timeScale().setVisibleLogicalRange({ from: range.from - step, to: range.to - step });
+  };
+  const candlePanRight = () => {
+    const range = lwChart.timeScale().getVisibleLogicalRange();
+    if (!range) return;
+    const step = (range.to - range.from) * 0.2;
+    lwChart.timeScale().setVisibleLogicalRange({ from: range.from + step, to: range.to + step });
+  };
+  document.getElementById('candlePanLeft')?.addEventListener('click', candlePanStep);
+  document.getElementById('candlePanRight')?.addEventListener('click', candlePanRight);
+
+  // ── Two-finger trackpad horizontal scroll ───────────────
+  container.addEventListener('wheel', e => {
+    if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+      e.preventDefault();
+      const range = lwChart.timeScale().getVisibleLogicalRange();
+      if (!range) return;
+      const span  = range.to - range.from;
+      const delta = (e.deltaX / container.offsetWidth) * span;
+      lwChart.timeScale().setVisibleLogicalRange({ from: range.from + delta, to: range.to + delta });
+    }
+  }, { passive: false });
+
   lwChart.timeScale().subscribeVisibleTimeRangeChange(() => window.positionCandleStrip?.());
   // First alignment (and make sure monthly data is loaded for this strip too).
   window.positionCandleStrip?.();
@@ -425,7 +454,7 @@ function renderPredictionResult(data) {
         </div>
       </div>
     </div>
-    ${data.aiAnalysis ? `<div class="pred-ai-note"><span class="pred-ai-badge">AI</span>${data.aiAnalysis}</div>` : ''}
+    ${data.aiAnalysis ? `<div class="pred-ai-note"><span class="pred-ai-badge">Analysis</span>${data.aiAnalysis}</div>` : ''}
     <div class="pred-matches-title">Historical Similar Patterns — click a card for full news + sentiment</div>
     <div class="pred-matches-grid">${matchCards || '<div class="pred-no-matches">No similar patterns found — try marking different candles.</div>'}</div>
   `;
