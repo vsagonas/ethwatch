@@ -909,6 +909,7 @@ function setupEvents() {
       state.days = parseInt(btn.dataset.days);
       document.getElementById('zoomOutBtn').style.display = state.days === 30 ? '' : 'none';
       await loadAllData();
+      window.syncDayInfo?.();
     });
   });
 
