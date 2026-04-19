@@ -57,10 +57,30 @@ function bollinger(values, period = 20, mult = 2) {
   return { upper, middle: mid, lower, width };
 }
 
+function rsi(values, period = 14) {
+  const out = new Array(values.length).fill(null);
+  if (values.length < period + 1) return out;
+  let gains = 0, losses = 0;
+  for (let i = 1; i <= period; i++) {
+    const d = values[i] - values[i - 1];
+    if (d > 0) gains += d; else losses -= d;
+  }
+  let avgGain = gains / period;
+  let avgLoss = losses / period;
+  out[period] = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
+  for (let i = period + 1; i < values.length; i++) {
+    const d = values[i] - values[i - 1];
+    avgGain = (avgGain * (period - 1) + (d > 0 ? d : 0)) / period;
+    avgLoss = (avgLoss * (period - 1) + (d < 0 ? -d : 0)) / period;
+    out[i] = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
+  }
+  return out;
+}
+
 // Just the most recent (non-null) value in a series.
 function latest(arr) {
   for (let i = arr.length - 1; i >= 0; i--) if (arr[i] != null) return arr[i];
   return null;
 }
 
-module.exports = { ema, sma, macd, bollinger, latest };
+module.exports = { ema, sma, rsi, macd, bollinger, latest };

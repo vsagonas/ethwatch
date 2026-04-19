@@ -607,9 +607,11 @@ function renderPatterns(patterns) {
   const grid = document.getElementById('patternsGrid');
 
   if (!patterns || patterns.length === 0) {
-    grid.innerHTML = '<div class="no-patterns">No strong patterns found in the last 90 days.</div>';
+    grid.innerHTML = '';
+    grid.closest('.patterns-section')?.style.setProperty('display', 'none');
     return;
   }
+  grid.closest('.patterns-section')?.style.removeProperty('display');
 
   grid.innerHTML = '';
 
@@ -841,8 +843,8 @@ async function loadPatternsData() {
     renderPatterns(patterns);
   } catch (err) {
     console.error('Pattern error:', err);
-    document.getElementById('patternsGrid').innerHTML =
-      '<div class="no-patterns">Pattern analysis unavailable.</div>';
+    document.getElementById('patternsGrid').innerHTML = '';
+    document.querySelector('.patterns-section')?.style.setProperty('display', 'none');
   }
 }
 

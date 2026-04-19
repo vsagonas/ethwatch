@@ -8,7 +8,7 @@ const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
 const dbm = require('../db');
-const { ema, macd, bollinger, latest } = require('./indicators');
+const { ema, rsi, macd, bollinger, latest } = require('./indicators');
 
 const TTL = 5 * 60 * 1000;   // 5 min — rate-friendly for all these APIs
 let cache = { data: null, ts: 0 };
@@ -69,14 +69,25 @@ async function fetchBtcHashRate() {
 }
 
 async function fetchEthGas() {
+  // Try owlracle first
   const d = await safeGet('https://api.owlracle.info/v4/eth/gas');
   const speeds = d?.speeds;
-  if (!Array.isArray(speeds) || !speeds.length) return null;
-  const std = speeds.find(s => s.acceptance === 0.6) || speeds[1] || speeds[0];
-  return {
-    gas_gwei:       std?.gasPrice != null ? Math.round(std.gasPrice) : null,
-    gas_base_fee:   d?.baseFee != null ? Math.round(d.baseFee) : null,
-  };
+  if (Array.isArray(speeds) && speeds.length) {
+    const std = speeds.find(s => s.acceptance === 0.6) || speeds[1] || speeds[0];
+    return {
+      gas_gwei:     std?.gasPrice != null ? Math.round(std.gasPrice) : null,
+      gas_base_fee: d?.baseFee    != null ? Math.round(d.baseFee)    : null,
+    };
+  }
+  // Fallback: ethgas.watch
+  const g = await safeGet('https://ethgas.watch/api/gas');
+  if (g?.standard?.gwei != null) return { gas_gwei: Math.round(g.standard.gwei) };
+  if (g?.standard != null && typeof g.standard === 'number') return { gas_gwei: Math.round(g.standard) };
+  // Fallback: beaconcha.in gas-now
+  const b = await safeGet('https://beaconcha.in/api/v1/execution/gasnow');
+  const fast = b?.data?.fast;
+  if (fast != null) return { gas_gwei: Math.round(fast / 1e9) };
+  return null;
 }
 
 async function fetchEthBtcRatio() {
@@ -105,7 +116,8 @@ function computeTechnicals(currency = 'usd') {
   const ema50Arr  = ema(values, 50);
   const ema200Arr = ema(values, 200);
   const { macd: macdArr, signal: signalArr, histogram } = macd(values);
-  const bb = bollinger(values, 20, 2);
+  const bb     = bollinger(values, 20, 2);
+  const rsiArr = rsi(values, 14);
 
   const lastPrice = values[values.length - 1];
   const lastEma20  = latest(ema20Arr);
@@ -115,6 +127,7 @@ function computeTechnicals(currency = 'usd') {
   const lastSignal = latest(signalArr);
   const lastHist   = latest(histogram);
   const lastBBW    = latest(bb.width);
+  const lastRsi    = latest(rsiArr);
 
   let macd_cross = 'none';
   if (lastMacd != null && lastSignal != null) {
@@ -136,7 +149,8 @@ function computeTechnicals(currency = 'usd') {
     macd_hist: lastHist,
     macd_cross,
     bb_width_pct: lastBBW,
-    bb_squeeze: lastBBW != null && lastBBW < 4, // tight bands — volatility coiled
+    bb_squeeze: lastBBW != null && lastBBW < 4,
+    rsi14: lastRsi,
   };
 }
 

@@ -859,7 +859,20 @@ canvas { display: block; width: 100% !important; }
 }
 
 @media (max-width: 900px) {
-  .header-center { max-width: 100%; overflow: hidden; }
+  .header { flex-wrap: wrap; align-items: center; }
+  /* Promote header-center children as direct flex items */
+  .header-center { display: contents; }
+  /* Row 1: left | market chips | (auto spacer) | right */
+  .header-market-chips { order: 1; }
+  .header-of-divider   { display: none; }
+  .header-right        { order: 2; margin-left: auto; }
+  /* Row 2: orderflow full width */
+  .header-orderflow {
+    order: 3;
+    flex: 0 0 100%;
+    border-top: 1px solid var(--border);
+    padding: 6px 0 2px;
+  }
   .hof-trades { display: none; }
 }
 

@@ -317,47 +317,43 @@ async function runForecast({ force = false } = {}) {
   }
 }
 
-// Restore any persisted forecast WITHOUT opening the modal — just repaint
-// the chip and overlay the trajectory on the chart so the user sees their
-// last forecast after a reload.
+// Restore any persisted forecast — always auto-activate the overlay.
+// If no saved forecast, fetch from server silently.
 function restoreSavedForecast() {
   const saved = loadSavedForecast();
-  if (!saved) return;
-  currentForecast = saved;
-  // Honor the persisted toggle state: only paint the overlay if the user
-  // explicitly had it turned ON last session. Default is OFF.
-  if (!loadOverlayPref()) return;
-  const attach = () => {
+  const attach = (data) => {
     if (!window.priceChart && !window.lwChartApi) {
-      setTimeout(attach, 200);
+      setTimeout(() => attach(data), 200);
       return;
     }
-    // persistPref:false here — we're just replaying the saved state,
-    // not re-saving it.
-    setAsActivePrediction(saved, { persistPref: false });
+    setAsActivePrediction(data, { persistPref: false });
   };
-  attach();
+  if (saved) {
+    currentForecast = saved;
+    attach(saved);
+    // Also silently refresh from server in background to pick up any newer forecast
+    fetch('/api/forecast-7d').then(r => r.json()).then(json => {
+      if (json.success && json.data && json.data.generated_ts !== saved.generated_ts) {
+        currentForecast = json.data;
+        saveForecast(json.data);
+        attach(json.data);
+      }
+    }).catch(() => {});
+    return;
+  }
+  // No saved forecast — fetch silently
+  fetch('/api/forecast-7d').then(r => r.json()).then(json => {
+    if (!json.success || !json.data) return;
+    currentForecast = json.data;
+    saveForecast(json.data);
+    attach(json.data);
+  }).catch(() => {});
 }
 
 document.addEventListener('DOMContentLoaded', () => {
   restoreSavedForecast();
 
-  const btn = document.getElementById('aiVerdictBigBtn');
-  btn?.addEventListener('click', () => {
-    // No forecast cached yet → fetch and show (opens modal first time).
-    if (!currentForecast) {
-      runForecast({ force: false });
-      return;
-    }
-    // Toggle: if the overlay is currently on, turn it off; if off, turn it on.
-    if (window.activePrediction) {
-      clearActiveForecast();
-    } else {
-      setAsActivePrediction(currentForecast);
-    }
-  });
-
-  // ⓘ info button reopens the detail modal at any time.
+  // 🔮 Forecast button (in chart controls) — open forecast detail modal
   document.getElementById('aiForecastInfoBtn')?.addEventListener('click', () => {
     if (!currentForecast) {
       runForecast({ force: false });
@@ -389,20 +385,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  // Reset Prediction — nuke the overlay, saved data, toggle pref, and return
-  // the chart to the default 1W view.
-  document.getElementById('resetPredictionBtn')?.addEventListener('click', () => {
-    currentForecast = null;
-    try {
-      localStorage.removeItem(FORECAST_LS_KEY);
-      localStorage.removeItem(OVERLAY_LS_KEY);
-    } catch {}
-    clearActiveForecast();
-    // Switch to 1W view if not already.
-    const weekBtn = document.querySelector('.range-btn[data-days="7"]:not(#zoomOutBtn)');
-    if (weekBtn && !weekBtn.classList.contains('active')) weekBtn.click();
-    window.toast?.('Prediction reset.', 'info');
-  });
   document.getElementById('forecastClose')?.addEventListener('click', closeForecastModal);
   document.getElementById('forecastModalBackdrop')?.addEventListener('click', closeForecastModal);
   document.getElementById('forecastShowOnChart')?.addEventListener('click', () => {

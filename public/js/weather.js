@@ -256,7 +256,7 @@ function renderVitals() {
   }
 
   // Funding → wind
-  const fr = d.funding_rate ?? v.funding_rate;
+  const fr = v.funding_rate;
   if (fr != null) {
     document.getElementById('vtFunding').textContent    = (fr * 100).toFixed(4) + '%';
     document.getElementById('vtFundingDesc').textContent = fr > 0.001 ? 'STRONG TAILWIND' : fr < -0.001 ? 'HEADWIND' : 'CALM';
@@ -270,29 +270,29 @@ function renderVitals() {
   }
 
   // F&G → lightning
-  const fg = d.fear_greed ?? v.fear_greed;
+  const fg = v.fg_value;
   if (fg != null) {
-    const fgVal = typeof fg === 'object' ? (fg.value ?? fg.index) : fg;
-    document.getElementById('vtFg').textContent    = fgVal + '/100';
-    document.getElementById('vtFgDesc').textContent = fgVal >= 75 ? 'EXTREME GREED ⚡' : fgVal >= 55 ? 'GREED' : fgVal <= 25 ? 'EXTREME FEAR 🌪️' : fgVal <= 45 ? 'FEAR' : 'NEUTRAL';
+    document.getElementById('vtFg').textContent    = fg + '/100';
+    document.getElementById('vtFgDesc').textContent = fg >= 75 ? 'EXTREME GREED ⚡' : fg >= 55 ? 'GREED' : fg <= 25 ? 'EXTREME FEAR 🌪️' : fg <= 45 ? 'FEAR' : 'NEUTRAL';
   }
 
   // OI → tide
-  const oi = d.open_interest ?? v.open_interest;
-  if (oi != null) {
-    document.getElementById('vtOi').textContent    = fmtPrice(oi, 'usd');
+  const oiEth = v.open_interest_eth;
+  const ethUsd = v.eth_usd;
+  if (oiEth != null && ethUsd != null) {
+    document.getElementById('vtOi').textContent    = fmtPrice(oiEth * ethUsd, 'usd');
     document.getElementById('vtOiDesc').textContent = 'Open positions in market';
   }
 
   // BB width → visibility
-  const bb = t.bollinger_bw ?? t.bb_width;
+  const bb = t.bb_width_pct;
   if (bb != null) {
     document.getElementById('vtBb').textContent    = bb.toFixed(2) + '%';
     document.getElementById('vtBbDesc').textContent = bb < 5 ? 'DENSE FOG (low volatility)' : bb > 15 ? 'CLEAR (high vol)' : 'PATCHY CLOUDS';
   }
 
   // Gas
-  const gas = v.gas ?? v.gas_gwei;
+  const gas = v.gas_gwei;
   if (gas != null) {
     document.getElementById('vtGas').textContent    = gas + ' gwei';
     document.getElementById('vtGasDesc').textContent = gas > 50 ? 'CONGESTED' : gas > 20 ? 'MODERATE' : 'SMOOTH';

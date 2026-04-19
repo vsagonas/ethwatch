@@ -123,11 +123,6 @@
         <div class="last-updated" id="lastUpdated">Fetching…</div>
         <!-- AI 7-day forecast chip — sits inline with the price row.
              Main button toggles the overlay on/off; ⓘ opens the detail modal. -->
-        <button class="ai-forecast-chip" id="aiVerdictBigBtn" title="Toggle 7-day forecast overlay on the chart">
-          <span class="afc-icon">🧠</span>
-          <span class="afc-title">FORECAST</span>
-        </button>
-        <button class="ai-forecast-info" id="aiForecastInfoBtn" title="View forecast detail">ⓘ</button>
       </div>
 
       <!-- 7-day forecast modal -->
@@ -242,11 +237,9 @@
 
   <!-- MAIN CHART -->
   <section class="section chart-section">
-    <div class="section-header">
-      <h2 class="section-title">Price Chart</h2>
+    <div class="section-header chart-section-header">
       <div class="chart-controls">
         <button class="range-btn zoom-out-btn" id="zoomOutBtn" style="display:none;" title="Zoom out to the full 30-day range">⇔ Full Month</button>
-        <!-- Chart type toggle -->
         <div class="chart-type-tabs">
           <button class="chart-type-btn" data-type="line" title="Line chart">📈 Line</button>
           <button class="chart-type-btn active" data-type="candles" title="Candlestick chart">🕯 Candles</button>
@@ -259,9 +252,7 @@
           <button class="range-btn" data-days="365">1Y</button>
         </div>
         <button class="save-set-btn" id="dayInfoToggleBtn" title="Show/hide day details and month strip">📋 Day Details</button>
-        <button class="reset-prediction-btn" id="resetPredictionBtn" title="Turn off forecast, wipe it from storage, and reset the chart to the default 1W view">↺ Reset Prediction</button>
-        <button class="export-btn" id="exportBtn" title="Export chart as PNG">Export</button>
-        <button class="save-set-btn rescore-btn" id="rescoreBtn" title="Re-run Claude verdicts for the last 30 days">↻ Rescore</button>
+        <button class="ai-forecast-info" id="aiForecastInfoBtn" title="View forecast detail">🔮 Forecast</button>
       </div>
     </div>
 
@@ -363,10 +354,6 @@
 
   <!-- PATTERN RECOGNITION (similarity) — moved here so it's right under the chart -->
   <section class="section patterns-section">
-    <div class="section-header">
-      <h2 class="section-title">Pattern Recognition</h2>
-      <p class="section-desc">Similar 24-hour price movements found in the past 90 days</p>
-    </div>
     <div class="patterns-grid" id="patternsGrid">
       <div class="patterns-loading">
         <div class="spinner"></div>
@@ -375,14 +362,14 @@
     </div>
   </section>
 
-  <!-- ORACLE — Saved marker sets + AI prophecy -->
+  <!-- CUSTOM PATTERNS — Oracle sets -->
   <section class="section oracle-section" id="oracleSection">
     <div class="section-header">
       <h2 class="section-title">
         <svg class="oracle-icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="12" cy="12" r="2.5" fill="currentColor"/><circle cx="12" cy="12" r="6.5" fill="none" stroke="currentColor" stroke-width="1.2"/><circle cx="12" cy="12" r="10.5" fill="none" stroke="currentColor" stroke-width="0.6" opacity="0.45"/><path d="M12 1.5v2.5M12 20v2.5M1.5 12h2.5M20 12h2.5" stroke="currentColor" stroke-width="1.2"/></svg>
-        ORACLE — Neural Pattern Prophecy
+        Custom Patterns
       </h2>
-      <p class="section-desc">Save a set of marked candles as a named pattern. The Oracle correlates each marker day's headlines, cross-asset moves, and price structure to forecast what follows.</p>
+      <p class="section-desc">Mark candles, save as a named pattern set, then run Claude pattern analysis to see what follows.</p>
     </div>
     <div id="oracleSetsList" class="oracle-sets-list">
       <div class="oracle-empty">No Oracle sets yet. Mark candles in the chart, then click <strong>Save as Oracle Set</strong>.</div>
