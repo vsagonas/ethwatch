@@ -229,13 +229,24 @@ function positionCandleStrip() {
       visible++;
     }
   });
-  // Position today-col right after the last historical tile.
+  // Position today-col at the correct Apr 19 x: use timeToCoordinate first,
+  // then fall back to last-candle-pos + one-day-width computed from visible cols.
   const todayCol = strip.querySelector('.today-col');
   if (todayCol) {
     const todayMs = parseInt(todayCol.dataset.ts);
     let todayX = isFinite(todayMs) ? ts.timeToCoordinate(Math.floor(todayMs / 1000)) : null;
     if (todayX == null || todayX < 0 || todayX > stripWidth + 60) {
-      todayX = maxHistX > 0 ? maxHistX + 90 : null;
+      // Compute one-day-width from the spacing between the last two visible historical tiles.
+      const visibleHistCols = [...strip.querySelectorAll('.day-col:not(.today-col):not(.forecast-col)')]
+        .filter(c => c.style.display !== 'none')
+        .sort((a, b) => parseInt(a.dataset.ts) - parseInt(b.dataset.ts));
+      if (visibleHistCols.length >= 2) {
+        const lastX = parseFloat(visibleHistCols[visibleHistCols.length - 1].style.left);
+        const prevX = parseFloat(visibleHistCols[visibleHistCols.length - 2].style.left);
+        todayX = lastX + (lastX - prevX); // one day beyond last candle
+      } else if (visibleHistCols.length === 1) {
+        todayX = parseFloat(visibleHistCols[0].style.left) + 82;
+      }
     }
     if (todayX != null && todayX >= 0 && todayX <= stripWidth + 60) {
       todayCol.style.display = '';
