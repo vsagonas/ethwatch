@@ -186,8 +186,6 @@ function initCandlestickChart(ohlcData) {
       tooltip.style.display = 'none';
       return;
     }
-    const bar = param.seriesData.get(candleSeries);
-    if (!bar) { tooltip.style.display = 'none'; return; }
 
     const fx  = window.fxFromUSD || 1;
     const cur = window.activeCurrency || 'usd';
@@ -195,6 +193,61 @@ function initCandlestickChart(ohlcData) {
     const fmt = v => v == null ? '—' : `${sym}${(v * fx).toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
     const fmtPct = (c, o) => o ? `${((c - o) / o * 100).toFixed(2)}%` : '—';
 
+    const hoverMs = param.time * 1000;
+    const bar = param.seriesData.get(candleSeries);
+
+    // ── FORECAST REGION (no candle data at this time) ──────
+    const prophecy = window.activePrediction;
+    if (!bar && prophecy?.trajectory?.length) {
+      const anchorMs = prophecy.anchor_ts || Date.now();
+      const absTraj  = prophecy.trajectory
+        .map(p => ({ ms: anchorMs + p.offset_hours * 3600000, price: p.expected_eth_price, low: p.low, high: p.high }))
+        .sort((a, b) => a.ms - b.ms);
+
+      let fcPrice = null, fcLow = null, fcHigh = null;
+      for (let i = 0; i < absTraj.length - 1; i++) {
+        const a = absTraj[i], b = absTraj[i + 1];
+        if (hoverMs >= a.ms && hoverMs <= b.ms) {
+          const t = (hoverMs - a.ms) / (b.ms - a.ms);
+          fcPrice = a.price + (b.price - a.price) * t;
+          if (a.low != null && b.low != null)  fcLow  = a.low  + (b.low  - a.low)  * t;
+          if (a.high != null && b.high != null) fcHigh = a.high + (b.high - a.high) * t;
+          break;
+        }
+      }
+      if (fcPrice == null) {
+        const last = absTraj[absTraj.length - 1];
+        if (last && hoverMs >= last.ms) { fcPrice = last.price; fcLow = last.low; fcHigh = last.high; }
+      }
+      if (fcPrice == null) { tooltip.style.display = 'none'; return; }
+
+      const dir      = prophecy.direction || 'neutral';
+      const conf     = prophecy.confidence != null ? Math.round(prophecy.confidence * 100) : null;
+      const dirColor = dir === 'bullish' ? '#3fb950' : dir === 'bearish' ? '#f85149' : '#d29922';
+      const dirSym   = dir === 'bullish' ? '▲' : dir === 'bearish' ? '▼' : '→';
+      const dateStr  = new Date(hoverMs).toLocaleString('en-US', {
+        month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false,
+      });
+      const rangeStr = (fcLow != null && fcHigh != null && Math.abs(fcHigh - fcLow) > 1)
+        ? `<div class="lwt-ohlc"><span>Low <b>${fmt(fcLow)}</b></span><span>High <b>${fmt(fcHigh)}</b></span></div>` : '';
+      const confStr  = conf != null ? ` <span class="lwt-move" style="color:${dirColor}">${conf}% conf</span>` : '';
+
+      tooltip.innerHTML = `
+        <div class="lwt-time">${dateStr} · AI FORECAST</div>
+        <div class="lwt-close" style="color:${dirColor}">${fmt(fcPrice)} <span class="lwt-move">${dirSym} ${dir.toUpperCase()}</span>${confStr}</div>
+        ${rangeStr}`;
+
+      const W = container.offsetWidth;
+      const TW = 210, TH = 90;
+      tooltip.style.left    = `${param.point.x + 14 + TW > W ? param.point.x - TW - 14 : param.point.x + 14}px`;
+      tooltip.style.top     = `${param.point.y - TH < 0 ? param.point.y + 10 : param.point.y - TH}px`;
+      tooltip.style.display = '';
+      return;
+    }
+
+    if (!bar) { tooltip.style.display = 'none'; return; }
+
+    // ── HISTORY REGION ────────────────────────────────────
     const ts = new Date(param.time * 1000);
     const dateStr = ts.toLocaleString('en-US', {
       month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false,
@@ -204,6 +257,15 @@ function initCandlestickChart(ohlcData) {
     const moveColor = move >= 0 ? '#3fb950' : '#f85149';
     const moveSym   = move >= 0 ? '▲' : '▼';
 
+    // Add forecast confidence badge if this bar is near the forecast anchor
+    let fcBadge = '';
+    if (prophecy?.confidence != null) {
+      const conf = Math.round(prophecy.confidence * 100);
+      const dir  = prophecy.direction || 'neutral';
+      const dc   = dir === 'bullish' ? '#3fb950' : dir === 'bearish' ? '#f85149' : '#d29922';
+      fcBadge = `<div class="lwt-ohlc" style="margin-top:6px;border-top:1px solid rgba(255,255,255,0.08);padding-top:4px"><span style="color:${dc}">AI ${dir.toUpperCase()} · ${conf}% conf</span></div>`;
+    }
+
     tooltip.innerHTML = `
       <div class="lwt-time">${dateStr}</div>
       <div class="lwt-close" style="color:${moveColor}">${fmt(bar.close)} <span class="lwt-move">${moveSym} ${fmtPct(bar.close, bar.open)}</span></div>
@@ -211,16 +273,13 @@ function initCandlestickChart(ohlcData) {
         <span>O <b>${fmt(bar.open)}</b></span>
         <span>H <b>${fmt(bar.high)}</b></span>
         <span>L <b>${fmt(bar.low)}</b></span>
-      </div>`;
+      </div>${fcBadge}`;
 
-    // Position: follow cursor, flip left/right & up/down at edges.
     const W = container.offsetWidth;
-    const H = container.offsetHeight;
-    const TW = 200, TH = 80;
-    const x = param.point.x + 14 + TW > W ? param.point.x - TW - 14 : param.point.x + 14;
-    const y = param.point.y - TH < 0 ? param.point.y + 10 : param.point.y - TH;
-    tooltip.style.left = `${x}px`;
-    tooltip.style.top  = `${y}px`;
+    const TH = fcBadge ? 110 : 80;
+    const TW = 200;
+    tooltip.style.left    = `${param.point.x + 14 + TW > W ? param.point.x - TW - 14 : param.point.x + 14}px`;
+    tooltip.style.top     = `${param.point.y - TH < 0 ? param.point.y + 10 : param.point.y - TH}px`;
     tooltip.style.display = '';
   });
 

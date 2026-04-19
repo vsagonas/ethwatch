@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en" data-weather="neutral">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ETHWEATHER — Ethereum Climate Report</title>
+  <link rel="stylesheet" href="/css/weather.css" />
+</head>
+<body>
+
+<!-- ── SKY LAYER ───────────────────────────────────────── -->
+<div class="sky">
+  <div class="clouds"><div class="cloud c1"></div><div class="cloud c2"></div><div class="cloud c3"></div><div class="cloud c4"></div></div>
+  <div class="rain-layer" id="rainLayer"></div>
+  <div class="lightning-layer" id="lightningLayer"></div>
+  <div class="sun-orb"></div>
+</div>
+
+<!-- ── HEADER ─────────────────────────────────────────── -->
+<header class="wx-header">
+  <div class="wx-logo">
+    <span class="wx-icon" id="hdrIcon">⛅</span>
+    <div>
+      <div class="wx-brand">ETHWEATHER</div>
+      <div class="wx-tagline">Ethereum Climate Intelligence</div>
+    </div>
+  </div>
+  <div class="wx-header-right">
+    <div class="wx-currency">
+      <button class="cur-btn active" data-cur="usd">USD</button>
+      <button class="cur-btn" data-cur="eur">EUR</button>
+    </div>
+    <a href="/" class="wx-nav-link">← ETHWATCH</a>
+  </div>
+</header>
+
+<!-- ── CURRENT CONDITIONS ─────────────────────────────── -->
+<section class="wx-current">
+  <div class="wx-current-inner">
+    <div class="wx-big-icon" id="bigIcon">⛅</div>
+    <div class="wx-temp-block">
+      <div class="wx-label">CURRENT TEMPERATURE</div>
+      <div class="wx-price" id="currentPrice">—</div>
+      <div class="wx-condition" id="conditionLabel">LOADING…</div>
+      <div class="wx-change" id="change24h">— 24h</div>
+    </div>
+    <div class="wx-stats-grid">
+      <div class="wx-stat">
+        <div class="wx-stat-label">MARKET CAP</div>
+        <div class="wx-stat-val" id="mktCap">—</div>
+      </div>
+      <div class="wx-stat">
+        <div class="wx-stat-label">24H VOLUME</div>
+        <div class="wx-stat-val" id="vol24h">—</div>
+      </div>
+      <div class="wx-stat">
+        <div class="wx-stat-label">7D CHANGE</div>
+        <div class="wx-stat-val" id="change7d">—</div>
+      </div>
+      <div class="wx-stat">
+        <div class="wx-stat-label">30D CHANGE</div>
+        <div class="wx-stat-val" id="change30d">—</div>
+      </div>
+      <div class="wx-stat">
+        <div class="wx-stat-label">ALL TIME HIGH</div>
+        <div class="wx-stat-val" id="ath">—</div>
+      </div>
+      <div class="wx-stat">
+        <div class="wx-stat-label">RANK</div>
+        <div class="wx-stat-val" id="rank">—</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── FORECAST BANNER ────────────────────────────────── -->
+<section class="wx-section">
+  <div class="wx-section-header">
+    <span class="wx-section-icon">🔮</span>
+    <span class="wx-section-title">7-DAY AI FORECAST</span>
+  </div>
+  <div class="wx-forecast-meta glass" id="forecastMeta" style="display:none">
+    <div class="fm-headline" id="fmHeadline">—</div>
+    <div class="fm-row">
+      <span class="fm-badge" id="fmDirection">—</span>
+      <span class="fm-conf" id="fmConf">—</span>
+      <span class="fm-move" id="fmMove">—</span>
+    </div>
+    <div class="fm-narrative" id="fmNarrative">—</div>
+    <div class="fm-pattern" id="fmPattern">—</div>
+  </div>
+  <div class="wx-forecast-strip" id="forecastStrip">
+    <div class="wx-loading">Loading forecast…</div>
+  </div>
+</section>
+
+<!-- ── WEATHER VITALS ─────────────────────────────────── -->
+<section class="wx-section">
+  <div class="wx-section-header">
+    <span class="wx-section-icon">🌡️</span>
+    <span class="wx-section-title">WEATHER VITALS</span>
+  </div>
+  <div class="wx-vitals-grid" id="vitalsGrid">
+    <div class="wx-vital glass">
+      <div class="vt-icon">🌡️</div>
+      <div class="vt-name">TEMPERATURE (RSI)</div>
+      <div class="vt-val" id="vtRsi">—</div>
+      <div class="vt-desc" id="vtRsiDesc">—</div>
+    </div>
+    <div class="wx-vital glass">
+      <div class="vt-icon">💧</div>
+      <div class="vt-name">HUMIDITY (VOLUME)</div>
+      <div class="vt-val" id="vtVol">—</div>
+      <div class="vt-desc" id="vtVolDesc">—</div>
+    </div>
+    <div class="wx-vital glass">
+      <div class="vt-icon">🌬️</div>
+      <div class="vt-name">WIND (FUNDING RATE)</div>
+      <div class="vt-val" id="vtFunding">—</div>
+      <div class="vt-desc" id="vtFundingDesc">—</div>
+    </div>
+    <div class="wx-vital glass">
+      <div class="vt-icon">🧭</div>
+      <div class="vt-name">PRESSURE (BTC DOM)</div>
+      <div class="vt-val" id="vtBtcDom">—</div>
+      <div class="vt-desc" id="vtBtcDomDesc">—</div>
+    </div>
+    <div class="wx-vital glass">
+      <div class="vt-icon">⚡</div>
+      <div class="vt-name">LIGHTNING (FEAR &amp; GREED)</div>
+      <div class="vt-val" id="vtFg">—</div>
+      <div class="vt-desc" id="vtFgDesc">—</div>
+    </div>
+    <div class="wx-vital glass">
+      <div class="vt-icon">🌊</div>
+      <div class="vt-name">TIDE (OPEN INTEREST)</div>
+      <div class="vt-val" id="vtOi">—</div>
+      <div class="vt-desc" id="vtOiDesc">—</div>
+    </div>
+    <div class="wx-vital glass">
+      <div class="vt-icon">🌫️</div>
+      <div class="vt-name">VISIBILITY (BB WIDTH)</div>
+      <div class="vt-val" id="vtBb">—</div>
+      <div class="vt-desc" id="vtBbDesc">—</div>
+    </div>
+    <div class="wx-vital glass">
+      <div class="vt-icon">⛽</div>
+      <div class="vt-name">GAS (NETWORK FEE)</div>
+      <div class="vt-val" id="vtGas">—</div>
+      <div class="vt-desc" id="vtGasDesc">—</div>
+    </div>
+  </div>
+</section>
+
+<!-- ── STORM ALERTS ───────────────────────────────────── -->
+<section class="wx-section">
+  <div class="wx-section-header">
+    <span class="wx-section-icon">🚨</span>
+    <span class="wx-section-title">STORM ALERTS &amp; ADVISORIES</span>
+  </div>
+  <div class="wx-alerts" id="alertsContainer">
+    <div class="wx-loading">Loading alerts…</div>
+  </div>
+</section>
+
+<!-- ── ALTERNATE FORECASTS ──────────────────────────────── -->
+<section class="wx-section" id="alternatesSection" style="display:none">
+  <div class="wx-section-header">
+    <span class="wx-section-icon">📂</span>
+    <span class="wx-section-title">PAST FORECASTS</span>
+  </div>
+  <div class="alt-fc-list" id="alternatesList"></div>
+</section>
+
+<!-- ── 30-DAY CLIMATE HISTORY ─────────────────────────── -->
+<section class="wx-section">
+  <div class="wx-section-header">
+    <span class="wx-section-icon">📅</span>
+    <span class="wx-section-title">30-DAY CLIMATE HISTORY</span>
+  </div>
+  <div class="wx-climate-strip" id="climateStrip">
+    <div class="wx-loading">Loading climate history…</div>
+  </div>
+</section>
+
+<!-- ── DAY DETAIL MODAL ───────────────────────────────── -->
+<div class="wx-modal-backdrop" id="dayModal" style="display:none">
+  <div class="wx-modal glass">
+    <button class="wx-modal-close" id="dayModalClose">✕</button>
+    <div class="wx-modal-header">
+      <span class="wm-icon" id="dmIcon">⛅</span>
+      <div>
+        <div class="wm-date" id="dmDate">—</div>
+        <div class="wm-condition" id="dmCondition">—</div>
+      </div>
+    </div>
+    <div class="wx-modal-body" id="dmBody">—</div>
+  </div>
+</div>
+
+<!-- ── FORECAST DAY MODAL ─────────────────────────────── -->
+<div class="wx-modal-backdrop" id="fcDayModal" style="display:none">
+  <div class="wx-modal glass">
+    <button class="wx-modal-close" id="fcDayModalClose">✕</button>
+    <div class="wx-modal-header">
+      <span class="wm-icon" id="fcdIcon">🔮</span>
+      <div>
+        <div class="wm-date" id="fcdDate">—</div>
+        <div class="wm-condition" id="fcdCondition">AI FORECAST</div>
+      </div>
+    </div>
+    <div class="wx-modal-body" id="fcdBody">—</div>
+  </div>
+</div>
+
+<!-- ── FOOTER ─────────────────────────────────────────── -->
+<footer class="wx-footer">
+  <div>ETHWEATHER — Powered by Claude AI + CoinGecko + NewsAPI</div>
+  <div><a href="/" class="wx-footer-link">← Back to ETHWATCH</a></div>
+</footer>
+
+<script src="/js/weather.js"></script>
+</body>
+</html>

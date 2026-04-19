@@ -1,7 +1,5 @@
 'use strict';
 
-const dbm = require('../db');
-
 // AI 7-DAY FORECAST — a pattern-completion engine.
 // Feeds Claude Sonnet 4.6 the full stack:
 //   • 90 days of daily ETH closes + moves + verdicts (3-month tape)
@@ -15,7 +13,7 @@ const Anthropic = require('@anthropic-ai/sdk');
 const dbm = require('../db');
 
 const TTL = 30 * 60 * 1000; // 30min cache
-let cache = { data: null, ts: 0 };
+const cache = { data: null, ts: 0 };
 
 const SYSTEM_PROMPT = `You are ETHWATCH's 7-DAY FORECAST ENGINE. You read:
  • daily_90d — 3 months of daily ETH closes, day %, BTC %, and stored daily verdicts.
@@ -102,16 +100,21 @@ const FORECAST_TOOL = {
 };
 
 // ── CONTEXT ASSEMBLY ───────────────────────────────────────
-function gatherContext() {
+// historyDays: how many days of daily bars + news Claude sees for pattern matching.
+// Supported: 7, 15, 30, 90 (default 90).
+function gatherContext(historyDays = 90) {
+  const days = Math.max(7, Math.min(90, historyDays));
   const now = Date.now();
-  const today = new Date(now).toISOString().slice(0, 10);
-  const from90 = new Date(now - 90 * 86400000).toISOString().slice(0, 10);
-  const from30 = new Date(now - 30 * 86400000).toISOString().slice(0, 10);
-  const from7  = new Date(now -  7 * 86400000).toISOString().slice(0, 10);
+  const today  = new Date(now).toISOString().slice(0, 10);
+  const fromN  = new Date(now - days * 86400000).toISOString().slice(0, 10);
+  // News window: same as history, capped at 30 (NewsAPI only keeps 30 days anyway)
+  const newsD  = Math.min(days, 30);
+  const fromNews = new Date(now - newsD * 86400000).toISOString().slice(0, 10);
+  const from7  = new Date(now - 7 * 86400000).toISOString().slice(0, 10);
 
-  const sent90 = dbm.getSentimentRange(from90, today);
+  const sentAll = dbm.getSentimentRange(fromN, today);
 
-  const daily_90d = sent90.map(r => ({
+  const daily_Nd = sentAll.map(r => ({
     date:    r.date,
     close:   r.eth_price,
     eth_pct: r.eth_move_pct,
@@ -119,20 +122,20 @@ function gatherContext() {
     verdict: r.verdict,
   }));
 
-  // 30-day news — one row per date with top headlines per category.
-  const dates30 = [];
-  for (let d = new Date(from30); d <= new Date(today); d = new Date(d.getTime() + 86400000)) {
-    dates30.push(d.toISOString().slice(0, 10));
+  // News window
+  const newsDates = [];
+  for (let d = new Date(fromNews); d <= new Date(today); d = new Date(d.getTime() + 86400000)) {
+    newsDates.push(d.toISOString().slice(0, 10));
   }
-  const news_30d = dates30.map(d => ({
+  const news_Nd = newsDates.map(d => ({
     date:   d,
     crypto: dbm.getHeadlines(d, 3, 'crypto').map(h => ({ s: h.source, t: h.title })),
     macro:  dbm.getHeadlines(d, 2, 'macro' ).map(h => ({ s: h.source, t: h.title })),
     hope:   dbm.getHeadlines(d, 1, 'hope'  ).map(h => ({ s: h.source, t: h.title })),
   }));
 
-  // 7-day rich detail.
-  const last_7_days = sent90
+  // Last 7 days of rich detail (always 7 regardless of history window)
+  const last_7_days = sentAll
     .filter(r => r.date >= from7)
     .map(r => ({
       date:         r.date,
@@ -163,15 +166,16 @@ function gatherContext() {
     ratio:    (s.buy_vol + s.sell_vol) > 0 ? +(s.buy_vol / (s.buy_vol + s.sell_vol)).toFixed(3) : null,
   });
 
-  const currentPrice = daily_90d.length
-    ? daily_90d[daily_90d.length - 1].close
+  const currentPrice = daily_Nd.length
+    ? daily_Nd[daily_Nd.length - 1].close
     : vitals?.technicals?.price ?? null;
 
   return {
     asof: new Date(now).toISOString(),
+    history_days: days,
     current_eth_price_usd: currentPrice,
-    daily_90d,
-    news_30d,
+    [`daily_${days}d`]: daily_Nd,
+    [`news_${newsD}d`]: news_Nd,
     last_7_days,
     today: todayNews,
     vitals,
@@ -183,10 +187,10 @@ function gatherContext() {
   };
 }
 
-async function buildForecast() {
+async function buildForecast({ historyDays = 90 } = {}) {
   if (!process.env.ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY not configured');
 
-  const context = gatherContext();
+  const context = gatherContext(historyDays);
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   const resp = await client.messages.create({
     model: 'claude-sonnet-4-6',
@@ -206,6 +210,7 @@ async function buildForecast() {
   forecast.anchor_ts     = Date.now();
   forecast.anchor_price  = context.current_eth_price_usd;
   forecast.horizon       = '7d';
+  forecast.history_days  = context.history_days;
 
   // Persist to prediction history
   try {
@@ -227,11 +232,21 @@ async function buildForecast() {
   return forecast;
 }
 
-async function getForecast({ force = false } = {}) {
+async function getForecast({ force = false, historyDays = 90 } = {}) {
   if (!force && cache.data && Date.now() - cache.ts < TTL) return cache.data;
-  const data = await buildForecast();
-  cache = { data, ts: Date.now() };
+  // DB fallback — serve latest stored forecast immediately if available
+  if (!force && !cache.data) {
+    const rows = dbm.getPredictions(1, 'ai_forecast');
+    if (rows.length && rows[0].raw_result) {
+      cache.data = rows[0].raw_result;
+      cache.ts   = Date.now() - TTL + 60000; // re-check in 60s
+      return cache.data;
+    }
+  }
+  const data = await buildForecast({ historyDays });
+  cache.data = data;
+  cache.ts   = Date.now();
   return data;
 }
 
-module.exports = { getForecast };
+module.exports = { getForecast, getCache: () => cache };

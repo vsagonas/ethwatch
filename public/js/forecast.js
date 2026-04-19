@@ -181,9 +181,11 @@ function clearActiveForecast({ persistPref = true } = {}) {
 }
 
 // ── Forecast day cards in the chart-aligned strip ─────────────
-// When a 7-day forecast is active AND we're on 1W, inject 7 extra tiles into
-// the monthStrip — one per forecast day — positioned at the forecast-day
-// timestamp so they align with the chart's time scale (and move with pan).
+// Inject 7 forecast tiles (one per day) into BOTH monthStrip and
+// candleMonthStrip so the dashed overlay line always has matching tiles
+// beneath it regardless of which chart mode is active.
+// Tiles are absolutely-positioned via each chart's coordinate system and
+// move with pan/zoom because the strip-position hooks hit all .day-col nodes.
 // Click → popup with narrative + reasoning for that day.
 function removeForecastDayCards() {
   document.querySelectorAll('.day-col.forecast-col').forEach(el => el.remove());
@@ -192,10 +194,9 @@ function removeForecastDayCards() {
 function renderForecastDayCards(forecast) {
   removeForecastDayCards();
   if (!forecast?.daily_breakdown?.length) return;
-  if (window.state?.days !== 7) return;
-
-  const strip = document.getElementById('monthStrip');
-  if (!strip) return;
+  // Only hide if the strip itself is hidden (1D day-info card mode).
+  // For all other ranges (1W/1M/3M/1Y) the strip is visible, so inject.
+  if (window.state?.days === 1) return;
 
   const anchorTs = forecast.anchor_ts || forecast.generated_ts || Date.now();
   const anchorPrice = forecast.anchor_price;
@@ -203,44 +204,57 @@ function renderForecastDayCards(forecast) {
     (forecast.trajectory || []).map(p => [Math.round(p.offset_hours), p.expected_eth_price])
   );
 
+  // Build the tile data once, then stamp it into both strips.
   let compound = anchorPrice;
-  forecast.daily_breakdown.forEach(d => {
-    const dayTs = anchorTs + d.day * 86400000;
-    const pct   = d.expected_move_pct;
-    const cls   = pct > 0.1 ? 'up' : pct < -0.1 ? 'down' : 'neutral';
-
+  const tiles = forecast.daily_breakdown.map(d => {
+    const dayTs  = anchorTs + d.day * 86400000;
+    const pct    = d.expected_move_pct;
+    const cls    = pct > 0.1 ? 'up' : pct < -0.1 ? 'down' : 'neutral';
     const hourKey = d.day * 24;
-    let eodPrice = trajByHour.get(hourKey);
+    let eodPrice  = trajByHour.get(hourKey);
     if (eodPrice == null && anchorPrice != null && isFinite(pct)) {
       compound = compound * (1 + pct / 100);
       eodPrice = compound;
     }
-
     const dayLabel = new Date(dayTs).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
     const priceStr = eodPrice != null ? `$${Math.round(eodPrice).toLocaleString('en-US')}` : '—';
-
-    const col = document.createElement('div');
-    col.className = 'day-col forecast-col';
-    col.dataset.ts = String(dayTs);
-    col.dataset.day = String(d.day);
-    col.innerHTML = `
-      <div class="day-tile forecast-tile ${cls}">
-        <div class="dt-date">D${d.day} · ${dayLabel}</div>
-        <div class="dt-move">${pct >= 0 ? '+' : ''}${Number(pct).toFixed(2)}%</div>
-        <div class="dt-verdict">AI FORECAST</div>
-        <div class="dt-fc-price">${priceStr}</div>
-      </div>
-    `;
-    col.addEventListener('click', (e) => {
-      e.stopPropagation();
-      openForecastDayPopup(forecast, d.day);
-    });
-    strip.appendChild(col);
+    return { d, dayTs, pct, cls, dayLabel, priceStr };
   });
 
-  // Realign immediately — pan/zoom plugin hooks will keep it aligned after.
-  window.positionStripOnChart?.(window.priceChart);
+  ['monthStrip', 'candleMonthStrip'].forEach(stripId => {
+    const strip = document.getElementById(stripId);
+    if (!strip) return;
+    tiles.forEach(({ d, dayTs, pct, cls, dayLabel, priceStr }) => {
+      const col = document.createElement('div');
+      col.className = 'day-col forecast-col';
+      col.dataset.ts  = String(dayTs);
+      col.dataset.day = String(d.day);
+      col.innerHTML = `
+        <div class="day-tile forecast-tile ${cls}">
+          <div class="dt-date">D${d.day} · ${dayLabel}</div>
+          <div class="dt-move">${pct >= 0 ? '+' : ''}${Number(pct).toFixed(2)}%</div>
+          <div class="dt-verdict">AI FORECAST</div>
+          <div class="dt-fc-price">${priceStr}</div>
+          <div class="dt-extras">
+            ${d.narrative ? `<div class="dt-fc-narrative">${fcEscape(d.narrative)}</div>` : ''}
+            ${d.key_event ? `<div class="dt-key-event">⚡ ${fcEscape(d.key_event)}</div>` : ''}
+          </div>
+        </div>
+      `;
+      col.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openForecastDayPopup(forecast, d.day);
+      });
+      strip.appendChild(col);
+    });
+  });
+
+  // Re-align immediately in both chart modes.
+  window.positionStripOnChart?.();
+  window.positionCandleStrip?.();
 }
+// Expose so monthly.js can re-inject after renderStrip rebuilds the DOM.
+window.renderForecastDayCards = renderForecastDayCards;
 
 function openForecastDayPopup(forecast, dayNum) {
   const d = (forecast.daily_breakdown || []).find(x => x.day === dayNum);
@@ -361,12 +375,12 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('forecastDayClose')?.addEventListener('click', closeDayModal);
   document.getElementById('forecastDayBackdrop')?.addEventListener('click', closeDayModal);
 
-  // Re-sync forecast day tiles when the user changes range. They only show
-  // on 1W; any other range strips them.
+  // Re-sync forecast day tiles when the user changes range.
+  // Show tiles on all ranges except 1D (where the strip is hidden).
   document.querySelectorAll('.range-btn:not(#zoomOutBtn)').forEach(btn => {
     btn.addEventListener('click', () => {
       setTimeout(() => {
-        if (window.activePrediction && window.state?.days === 7) {
+        if (window.activePrediction && window.state?.days !== 1) {
           renderForecastDayCards(window.activePrediction);
         } else {
           removeForecastDayCards();
@@ -391,7 +405,6 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   document.getElementById('forecastClose')?.addEventListener('click', closeForecastModal);
   document.getElementById('forecastModalBackdrop')?.addEventListener('click', closeForecastModal);
-  document.getElementById('forecastRefresh')?.addEventListener('click', () => runForecast({ force: true }));
   document.getElementById('forecastShowOnChart')?.addEventListener('click', () => {
     if (currentForecast) {
       setAsActivePrediction(currentForecast);

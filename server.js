@@ -838,6 +838,33 @@ app.get('/api/forecast-7d', async (req, res) => {
   }
 });
 
+// ── FORECAST HISTORY — past ai_forecast rows from DB ──────────────────────
+app.get('/api/forecast-7d/history', (req, res) => {
+  try {
+    const limit = Math.min(20, parseInt(req.query.limit) || 10);
+    const rows = dbm.getPredictions(limit, 'ai_forecast');
+    res.json({ success: true, forecasts: rows });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ── ADMIN: set a specific forecast as live (promotes it to cache) ──────────
+app.post('/api/admin/set-live-forecast/:id', (req, res) => {
+  try {
+    const id   = parseInt(req.params.id);
+    const rows = dbm.getPredictions(200, 'ai_forecast');
+    const row  = rows.find(r => r.id === id);
+    if (!row?.raw_result) return res.status(404).json({ success: false, error: 'Forecast not found' });
+    // Promote to in-memory cache so all clients immediately get it
+    forecast.getCache().data = row.raw_result;
+    forecast.getCache().ts   = Date.now();
+    res.json({ success: true, id, direction: row.raw_result.direction });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // ── Market vitals — 24h stats bar (funding, OI, BTC dom, gas, F&G, indicators)
 app.get('/api/market-vitals', async (req, res) => {
   const force = req.query.force === '1';
@@ -931,6 +958,122 @@ app.get('/api/predictions/history', async (req, res) => {
 
     const rows = dbm.getPredictions(limit, type);
     res.json({ success: true, predictions: rows });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/weather', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'weather.html'));
+});
+
+app.get('/admin', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'admin.html'));
+});
+
+// ── ADMIN: stats overview ─────────────────────────────────────────────────
+app.get('/api/admin/stats', (req, res) => {
+  try {
+    const days = parseInt(req.query.days) || 30;
+    const today = new Date().toISOString().slice(0, 10);
+    const from  = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
+    const rows  = dbm.getSentimentRange(from, today);
+
+    const verdicts = { bullish: 0, bearish: 0, neutral: 0, pending: 0 };
+    let hopeSum = 0, hopeCount = 0, macroSum = 0, macroCount = 0;
+    let warDays = 0; // macro_score < -30 = geopolitical stress
+    rows.forEach(r => {
+      const v = (r.verdict || 'pending').toLowerCase();
+      verdicts[v] = (verdicts[v] || 0) + 1;
+      if (r.hope_score != null)  { hopeSum  += r.hope_score;  hopeCount++;  }
+      if (r.macro_score != null) { macroSum += r.macro_score; macroCount++; }
+      if (r.macro_score != null && r.macro_score < -30) warDays++;
+    });
+    const total = rows.length || 1;
+    const preds = dbm.getPredictions(100, 'ai_forecast');
+    const resolved = preds.filter(p => p.accuracy_score != null);
+    const avgAccuracy = resolved.length ? resolved.reduce((s, p) => s + p.accuracy_score, 0) / resolved.length : null;
+
+    res.json({
+      success: true,
+      period_days: days,
+      total_days: rows.length,
+      verdicts,
+      verdict_pct: {
+        bullish: +(verdicts.bullish / total * 100).toFixed(1),
+        bearish: +(verdicts.bearish / total * 100).toFixed(1),
+        neutral: +(verdicts.neutral / total * 100).toFixed(1),
+      },
+      avg_hope_score:  hopeCount  ? +(hopeSum  / hopeCount).toFixed(1)  : null,
+      avg_macro_score: macroCount ? +(macroSum / macroCount).toFixed(1) : null,
+      war_days: warDays,
+      war_pct:  +(warDays / total * 100).toFixed(1),
+      total_predictions: preds.length,
+      resolved_predictions: resolved.length,
+      avg_accuracy: avgAccuracy != null ? +avgAccuracy.toFixed(1) : null,
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ── ADMIN: run new AI forecast (force) ───────────────────────────────────
+app.post('/api/admin/run-forecast', async (req, res) => {
+  const historyDays = Math.max(7, Math.min(90, parseInt(req.body?.history_days) || 90));
+  try {
+    const data = await forecast.getForecast({ force: true, historyDays });
+    res.json({ success: true, data });
+  } catch (err) {
+    res.status(502).json({ success: false, error: err.message });
+  }
+});
+
+// ── ADMIN: rescore sentiment ──────────────────────────────────────────────
+app.post('/api/admin/rescore-sentiment', async (req, res) => {
+  const days = Math.max(1, Math.min(60, parseInt(req.body?.days) || 7));
+  try {
+    const cleared = rescoreRecentDays(days);
+    const rows = await buildMonthlySentiment(cgGet, { days, currency: 'usd' });
+    res.json({ success: true, cleared, days_processed: rows.length });
+  } catch (err) {
+    res.status(502).json({ success: false, error: err.message });
+  }
+});
+
+// ── ADMIN: manual prediction ──────────────────────────────────────────────
+app.post('/api/admin/prediction', (req, res) => {
+  try {
+    const { direction, expected_move_pct, confidence, horizon, narrative, headline } = req.body || {};
+    if (!direction || !['bullish', 'bearish', 'neutral'].includes(direction)) {
+      return res.status(400).json({ success: false, error: 'direction must be bullish|bearish|neutral' });
+    }
+    const now        = Date.now();
+    const targetDate = new Date(now + 7 * 86400000).toISOString().slice(0, 10);
+    let currentPrice = null;
+    try { currentPrice = forecast.getCache()?.data?.anchor_price ?? null; } catch {}
+
+    const raw = {
+      direction, expected_move_pct, confidence,
+      headline: headline || narrative || '',
+      narrative: narrative || '',
+      generated_ts: now, anchor_ts: now, anchor_price: currentPrice,
+      horizon: horizon || '7d',
+      model: 'manual',
+      daily_breakdown: [], trajectory: [],
+    };
+    const id = dbm.savePrediction({
+      type: 'ai_forecast',
+      source_ref: 'manual',
+      predicted_direction: direction,
+      predicted_move_pct: expected_move_pct != null ? parseFloat(expected_move_pct) : null,
+      confidence: confidence != null ? Math.round(parseFloat(confidence) * 100) : null,
+      horizon: horizon || '7d',
+      target_date: targetDate,
+      eth_price_at_prediction: currentPrice,
+      narrative: narrative || '',
+      raw_result: raw,
+    });
+    res.json({ success: true, id, raw });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }

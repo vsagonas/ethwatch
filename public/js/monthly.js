@@ -109,6 +109,12 @@ function renderStrip(days, currency) {
   // Align both strips against their respective chart's x-scale.
   window.positionStripOnChart?.();
   window.positionCandleStrip?.();
+
+  // Re-inject forecast day tiles if a forecast overlay is active —
+  // renderStrip wiped the DOM with innerHTML so tiles need to come back.
+  if (window.activePrediction) {
+    window.renderForecastDayCards?.(window.activePrediction);
+  }
 }
 
 // Align every day-col to the current price-chart x-scale. Also flips the

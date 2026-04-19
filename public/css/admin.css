@@ -1,0 +1,168 @@
+/* ── ETHWATCH ADMIN CSS ───────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:         #0d1117;
+  --bg2:        #161b22;
+  --bg3:        #21262d;
+  --border:     #30363d;
+  --text:       #e6edf3;
+  --text-dim:   #8b949e;
+  --accent:     #58a6ff;
+  --up:         #3fb950;
+  --down:       #f85149;
+  --neutral:    #8b949e;
+  --warn:       #d29922;
+  --glass:      rgba(255,255,255,0.04);
+  --r:          8px;
+}
+
+html, body { min-height: 100vh; background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, monospace; font-size: 14px; }
+
+/* ── HEADER ──────────────────────────────────────── */
+.adm-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 24px; background: var(--bg2); border-bottom: 1px solid var(--border);
+  position: sticky; top: 0; z-index: 50;
+}
+.adm-logo { display: flex; align-items: center; gap: 12px; font-size: 1.2rem; }
+.adm-brand { font-size: 1rem; font-weight: 800; letter-spacing: 2px; color: var(--accent); }
+.adm-sub   { font-size: 0.65rem; letter-spacing: 1.5px; color: var(--text-dim); text-transform: uppercase; }
+.adm-nav   { display: flex; gap: 8px; }
+.adm-nav-link { padding: 5px 14px; border-radius: 6px; border: 1px solid var(--border); color: var(--text-dim); text-decoration: none; font-size: 0.8rem; transition: all 0.2s; }
+.adm-nav-link:hover { background: var(--bg3); color: var(--text); }
+
+/* ── MAIN ────────────────────────────────────────── */
+.adm-main { max-width: 1200px; margin: 0 auto; padding: 24px; display: flex; flex-direction: column; gap: 28px; }
+
+/* ── SECTIONS ────────────────────────────────────── */
+.adm-section {}
+.adm-section-title {
+  font-size: 0.7rem; font-weight: 700; letter-spacing: 2.5px; text-transform: uppercase;
+  color: var(--accent); margin-bottom: 14px; display: flex; align-items: center; gap: 12px;
+}
+.adm-period-picker { display: flex; gap: 4px; margin-left: auto; }
+.period-btn {
+  padding: 3px 10px; border-radius: 4px; border: 1px solid var(--border);
+  background: transparent; color: var(--text-dim); cursor: pointer; font-size: 0.7rem;
+  transition: all 0.15s;
+}
+.period-btn.active, .period-btn:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+/* ── STATS GRID ──────────────────────────────────── */
+.adm-stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
+.adm-stat-card {
+  background: var(--bg2); border: 1px solid var(--border); border-radius: var(--r);
+  padding: 16px; transition: border-color 0.2s;
+}
+.adm-stat-card:hover { border-color: var(--accent); }
+.asc-label { font-size: 0.6rem; letter-spacing: 1.5px; text-transform: uppercase; color: var(--text-dim); margin-bottom: 6px; }
+.asc-val   { font-size: 1.6rem; font-weight: 800; color: var(--text); line-height: 1; margin-bottom: 4px; }
+.asc-sub   { font-size: 0.7rem; color: var(--text-dim); }
+.asc-val.up      { color: var(--up); }
+.asc-val.down    { color: var(--down); }
+.asc-val.warn    { color: var(--warn); }
+
+/* ── CLIMATE BARS ────────────────────────────────── */
+.adm-bars { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--r); padding: 16px; }
+.adm-bar-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.adm-bar-row:last-child { margin-bottom: 0; }
+.abr-label { width: 120px; font-size: 0.7rem; letter-spacing: 1px; text-transform: uppercase; color: var(--text-dim); flex: 0 0 auto; }
+.abr-track { flex: 1; height: 14px; background: var(--bg3); border-radius: 7px; overflow: hidden; }
+.abr-fill  { height: 100%; border-radius: 7px; transition: width 0.6s ease; }
+.abr-val   { width: 55px; text-align: right; font-size: 0.8rem; font-weight: 700; flex: 0 0 auto; }
+
+/* ── CONTROLS ────────────────────────────────────── */
+.adm-controls-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.adm-control-card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--r); padding: 20px; display: flex; flex-direction: column; gap: 12px; }
+.acc-title { font-size: 0.85rem; font-weight: 700; color: var(--text); }
+.acc-desc  { font-size: 0.78rem; color: var(--text-dim); line-height: 1.5; }
+.acc-status { font-size: 0.78rem; min-height: 1.2em; }
+.acc-status.ok   { color: var(--up); }
+.acc-status.err  { color: var(--down); }
+.acc-status.running { color: var(--accent); }
+
+/* ── BUTTONS ─────────────────────────────────────── */
+.adm-btn {
+  padding: 8px 18px; border-radius: 6px; border: 1px solid var(--border);
+  background: var(--bg3); color: var(--text); cursor: pointer; font-size: 0.82rem;
+  font-weight: 600; transition: all 0.2s; width: fit-content;
+}
+.adm-btn:hover   { border-color: var(--accent); color: var(--accent); }
+.adm-btn.primary { background: var(--accent); color: #0d1117; border-color: var(--accent); }
+.adm-btn.primary:hover { background: #79c0ff; }
+.adm-btn.large   { padding: 10px 24px; font-size: 0.9rem; }
+.adm-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ── INPUTS ──────────────────────────────────────── */
+.adm-input {
+  padding: 7px 10px; border-radius: 6px; border: 1px solid var(--border);
+  background: var(--bg3); color: var(--text); font-size: 0.85rem;
+}
+.adm-input:focus { outline: none; border-color: var(--accent); }
+.adm-input.large { padding: 8px 12px; font-size: 0.9rem; }
+.adm-input.full  { width: 100%; }
+.adm-input-row { display: flex; align-items: center; gap: 8px; }
+.adm-input-label { font-size: 0.8rem; color: var(--text-dim); }
+textarea.adm-input { resize: vertical; font-family: inherit; line-height: 1.5; }
+
+/* ── PREDICTION FORM ─────────────────────────────── */
+.glass { background: var(--glass); border: 1px solid var(--border); border-radius: var(--r); backdrop-filter: blur(8px); }
+.adm-prediction-form { padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+.apf-row { display: flex; gap: 16px; flex-wrap: wrap; }
+.apf-group { display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 140px; }
+.apf-group.wide { flex: 3; min-width: 300px; }
+.apf-label { font-size: 0.62rem; letter-spacing: 1.5px; text-transform: uppercase; color: var(--text-dim); }
+.apf-dir-btns { display: flex; gap: 6px; }
+.dir-btn {
+  flex: 1; padding: 8px; border-radius: 6px; border: 2px solid var(--border);
+  background: transparent; color: var(--text-dim); cursor: pointer; font-size: 0.8rem;
+  font-weight: 700; transition: all 0.15s;
+}
+.dir-btn.bullish:hover, .dir-btn.bullish.active { border-color: var(--up);   background: rgba(63,185,80,0.12);  color: var(--up);   }
+.dir-btn.neutral:hover, .dir-btn.neutral.active { border-color: var(--neutral); background: rgba(139,148,158,0.12); color: var(--text); }
+.dir-btn.bearish:hover, .dir-btn.bearish.active { border-color: var(--down); background: rgba(248,81,73,0.12);  color: var(--down); }
+.apf-actions { display: flex; align-items: center; gap: 16px; }
+
+/* ── TABLE ───────────────────────────────────────── */
+.adm-table-wrap { overflow-x: auto; border-radius: var(--r); border: 1px solid var(--border); }
+.adm-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+.adm-table thead th { background: var(--bg2); padding: 10px 12px; text-align: left; font-size: 0.65rem; letter-spacing: 1.5px; text-transform: uppercase; color: var(--text-dim); border-bottom: 1px solid var(--border); white-space: nowrap; }
+.adm-table tbody tr { border-bottom: 1px solid var(--border); transition: background 0.15s; }
+.adm-table tbody tr:last-child { border-bottom: none; }
+.adm-table tbody tr:hover { background: var(--bg2); }
+.adm-table td { padding: 9px 12px; vertical-align: middle; color: var(--text); }
+.adm-table td.dim { color: var(--text-dim); }
+.adm-table .badge {
+  display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 0.68rem;
+  font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase;
+}
+.badge.bullish { background: rgba(63,185,80,0.15);  color: var(--up);   border: 1px solid rgba(63,185,80,0.3); }
+.badge.bearish { background: rgba(248,81,73,0.15);  color: var(--down); border: 1px solid rgba(248,81,73,0.3); }
+.badge.neutral { background: rgba(139,148,158,0.15); color: var(--neutral); border: 1px solid rgba(139,148,158,0.3); }
+.badge.manual  { background: rgba(210,153,34,0.15);  color: var(--warn); border: 1px solid rgba(210,153,34,0.3); }
+.badge.ai      { background: rgba(88,166,255,0.15);  color: var(--accent); border: 1px solid rgba(88,166,255,0.3); }
+.adm-loading { text-align: center; color: var(--text-dim); padding: 20px; }
+.adm-count { font-size: 0.7rem; color: var(--text-dim); font-weight: 400; letter-spacing: 0; }
+.acc-bar { display: inline-block; width: 40px; height: 6px; border-radius: 3px; background: var(--bg3); vertical-align: middle; margin-right: 6px; overflow: hidden; }
+.acc-bar-fill { height: 100%; background: var(--accent); border-radius: 3px; }
+.set-live-btn { padding: 3px 10px; font-size: 0.7rem; white-space: nowrap; }
+.td-headline { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-dim); }
+.row-latest td { background: rgba(88,166,255,0.05); }
+.row-latest td:first-child { border-left: 3px solid var(--accent); }
+
+/* ── DAYS PICKER ─────────────────────────────────── */
+.adm-days-picker { display: flex; gap: 6px; flex-wrap: wrap; }
+.days-btn {
+  padding: 7px 14px; border-radius: 6px; border: 1px solid var(--border);
+  background: var(--bg3); color: var(--text-dim); cursor: pointer; font-size: 0.8rem;
+  font-weight: 600; transition: all 0.15s;
+}
+.days-btn:hover  { border-color: var(--accent); color: var(--accent); }
+.days-btn.active { background: var(--accent); color: #0d1117; border-color: var(--accent); }
+
+/* ── RESPONSIVE ──────────────────────────────────── */
+@media (max-width: 700px) {
+  .adm-controls-row { grid-template-columns: 1fr; }
+  .apf-row { flex-direction: column; }
+}

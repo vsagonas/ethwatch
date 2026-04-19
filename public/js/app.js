@@ -321,23 +321,7 @@ function buildPriceChart(histJson) {
             font: { size: 11 },
           },
         },
-        tooltip: {
-          backgroundColor: isDark() ? '#161b22' : '#ffffff',
-          borderColor: isDark() ? '#30363d' : '#d0d7de',
-          borderWidth: 1,
-          titleColor: isDark() ? '#e6edf3' : '#1f2328',
-          bodyColor: isDark() ? '#8b949e' : '#656d76',
-          padding: 10,
-          callbacks: {
-            title: items => fmtDate(items[0].parsed.x),
-            label: item => {
-              if (item.dataset.label === 'Volume') {
-                return ` Vol: ${fmtLarge(item.raw, state.currency)}`;
-              }
-              return ` ${item.dataset.label}: ${fmtPrice(item.raw, state.currency)}`;
-            },
-          },
-        },
+        tooltip: { enabled: false }, // custom #lineTooltip handles all hover display
         zoom: {
           // Zoom gestures are DISABLED per user request — only the Full Month
           // button can expand the view. Pan stays on so the user can scroll
@@ -363,14 +347,14 @@ function buildPriceChart(histJson) {
         x: {
           type: 'time',
           time: { tooltipFormat: 'PPp' },
-          grid: { color: gridColor, drawBorder: false },
+          grid: { display: false },
           ticks: { color: tickColor, maxTicksLimit: 8, font: { size: 11 } },
           min: initialXMin,
           max: initialXMax,
         },
         yPrice: {
           position: 'right',
-          grid: { color: gridColor, drawBorder: false },
+          grid: { display: false },
           ticks: {
             color: tickColor,
             font: { size: 11 },
@@ -402,34 +386,111 @@ function buildPriceChart(histJson) {
   loader.classList.add('hidden');
 
   // ── Line chart crosshair tooltip ──────────────────────────
+  // Matches the candle tooltip style. Handles two regions:
+  //   • History  — shows close price + day % move
+  //   • Forecast — shows forecast price + confidence + direction
   const lineTip = document.getElementById('lineTooltip');
   if (lineTip) {
     canvas.addEventListener('mousemove', e => {
       if (!priceChart || !lineTip) return;
-      const rect = canvas.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
+      const rect   = canvas.getBoundingClientRect();
+      const x      = e.clientX - rect.left;
+      const y      = e.clientY - rect.top;
+      const fx     = window.fxFromUSD || 1;
+      const cur    = state.currency || 'usd';
+      const sym    = cur === 'eur' ? '€' : '$';
+      const fmt    = v => v == null ? '—' : `${sym}${(v * fx).toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
+
+      const labels      = priceChart.data.labels;
+      const lastLabelTs = labels?.length ? +new Date(labels[labels.length - 1]) : 0;
+      const hoverTs     = priceChart.scales?.x ? priceChart.scales.x.getValueForPixel(x) : 0;
+
+      // ── FORECAST REGION ──────────────────────────────────
+      if (lastLabelTs > 0 && hoverTs > lastLabelTs) {
+        const prophecy = window.activePrediction;
+        if (!prophecy?.trajectory?.length) { lineTip.style.display = 'none'; return; }
+
+        const anchorMs = prophecy.anchor_ts || Date.now();
+        // Find the two trajectory points that bracket hoverTs, interpolate price
+        const absTraj = prophecy.trajectory
+          .map(p => ({ ms: anchorMs + p.offset_hours * 3600000, price: p.expected_eth_price, low: p.low, high: p.high }))
+          .sort((a, b) => a.ms - b.ms);
+
+        let fcPrice = null, fcLow = null, fcHigh = null;
+        for (let i = 0; i < absTraj.length - 1; i++) {
+          const a = absTraj[i], b = absTraj[i + 1];
+          if (hoverTs >= a.ms && hoverTs <= b.ms) {
+            const t = (hoverTs - a.ms) / (b.ms - a.ms);
+            fcPrice = a.price + (b.price - a.price) * t;
+            if (a.low != null && b.low != null)   fcLow  = a.low  + (b.low  - a.low)  * t;
+            if (a.high != null && b.high != null)  fcHigh = a.high + (b.high - a.high) * t;
+            break;
+          }
+        }
+        if (fcPrice == null && absTraj.length) {
+          // past the last point — use final value
+          const last = absTraj[absTraj.length - 1];
+          if (hoverTs >= last.ms) { fcPrice = last.price; fcLow = last.low; fcHigh = last.high; }
+        }
+        if (fcPrice == null) { lineTip.style.display = 'none'; return; }
+
+        const dir     = prophecy.direction || 'neutral';
+        const conf    = prophecy.confidence != null ? Math.round(prophecy.confidence * 100) : null;
+        const dirColor = dir === 'bullish' ? '#3fb950' : dir === 'bearish' ? '#f85149' : '#d29922';
+        const dirSym   = dir === 'bullish' ? '▲' : dir === 'bearish' ? '▼' : '→';
+        const dateStr  = new Date(hoverTs).toLocaleString('en-US', {
+          month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false,
+        });
+        const rangeStr = (fcLow != null && fcHigh != null && Math.abs(fcHigh - fcLow) > 1)
+          ? `<div class="lwt-ohlc"><span>Low <b>${fmt(fcLow)}</b></span><span>High <b>${fmt(fcHigh)}</b></span></div>` : '';
+        const confStr  = conf != null ? ` <span class="lwt-move" style="color:${dirColor}">${conf}% conf</span>` : '';
+
+        lineTip.innerHTML = `
+          <div class="lwt-time">${dateStr} · AI FORECAST</div>
+          <div class="lwt-close" style="color:${dirColor}">${fmt(fcPrice)} <span class="lwt-move">${dirSym} ${dir.toUpperCase()}</span>${confStr}</div>
+          ${rangeStr}`;
+
+        const W  = canvas.offsetWidth;
+        const TW = 210;
+        lineTip.style.left    = `${x + 14 + TW > W ? x - TW - 14 : x + 14}px`;
+        lineTip.style.top     = `${y - 70 < 0 ? y + 10 : y - 70}px`;
+        lineTip.style.display = '';
+        return;
+      }
+
+      // ── HISTORY REGION ───────────────────────────────────
       const pts = priceChart.getElementsAtEventForMode(e, 'index', { intersect: false }, false);
       if (!pts.length) { lineTip.style.display = 'none'; return; }
-      const idx = pts[0].index;
-      const ds  = priceChart.data.datasets[0];
-      const pt  = ds?.data?.[idx];
-      if (!pt) { lineTip.style.display = 'none'; return; }
-      const ts  = new Date(pt.x);
+      const ds0el = pts.find(p => p.datasetIndex === 0);
+      if (!ds0el) { lineTip.style.display = 'none'; return; }
+      const idx      = ds0el.index;
+      const priceY   = priceChart.data.datasets[0]?.data?.[idx];
+      const labelTs  = labels?.[idx];
+      if (priceY == null || !labelTs) { lineTip.style.display = 'none'; return; }
+      const price = Number(priceY);
+      const ts    = new Date(labelTs);
+      if (!isFinite(price) || isNaN(ts.getTime())) { lineTip.style.display = 'none'; return; }
+
+      // compute day % change vs prev close
+      const prevPrice = idx > 0 ? Number(priceChart.data.datasets[0]?.data?.[idx - 1]) : null;
+      const movePct   = (prevPrice && isFinite(prevPrice) && prevPrice > 0)
+        ? ((price - prevPrice) / prevPrice * 100) : null;
+      const moveColor = movePct == null ? '' : movePct >= 0 ? '#3fb950' : '#f85149';
+      const moveSym   = movePct == null ? '' : movePct >= 0 ? '▲' : '▼';
+      const moveStr   = movePct != null
+        ? ` <span class="lwt-move" style="color:${moveColor}">${moveSym} ${Math.abs(movePct).toFixed(2)}%</span>` : '';
+
       const dateStr = ts.toLocaleString('en-US', {
         month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false,
       });
-      const fx  = window.fxFromUSD || 1;
-      const cur = state.currency || 'usd';
-      const sym = cur === 'eur' ? '€' : '$';
-      const fmt = v => `${sym}${(v * fx).toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
-      lineTip.innerHTML = `<div class="lwt-time">${dateStr}</div><div class="lwt-close">${fmt(pt.y)}</div>`;
-      const W = canvas.offsetWidth;
-      const TW = 160;
-      const lx = x + 14 + TW > W ? x - TW - 14 : x + 14;
-      const ly = y - 50 < 0 ? y + 10 : y - 50;
-      lineTip.style.left = `${lx}px`;
-      lineTip.style.top  = `${ly}px`;
+      lineTip.innerHTML = `
+        <div class="lwt-time">${dateStr}</div>
+        <div class="lwt-close" style="color:${moveColor || 'inherit'}">${fmt(price)}${moveStr}</div>`;
+
+      const W  = canvas.offsetWidth;
+      const TW = 180;
+      lineTip.style.left    = `${x + 14 + TW > W ? x - TW - 14 : x + 14}px`;
+      lineTip.style.top     = `${y - 60 < 0 ? y + 10 : y - 60}px`;
       lineTip.style.display = '';
     });
     canvas.addEventListener('mouseleave', () => { lineTip.style.display = 'none'; });

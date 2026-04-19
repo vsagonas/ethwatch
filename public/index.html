@@ -23,16 +23,16 @@
     </div>
     <div class="header-center">
       <!-- Market stat chips -->
-      <div class="header-market-chips">
-        <div class="hmc-chip">
+      <div class="header-market-chips" data-drop-zone="header-market">
+        <div class="hmc-chip" data-chip-key="mkt-cap">
           <span class="hmc-label">Mkt Cap</span>
           <span class="hmc-value" id="statMarketCap">—</span>
         </div>
-        <div class="hmc-chip">
+        <div class="hmc-chip" data-chip-key="24h-vol">
           <span class="hmc-label">24h Vol</span>
           <span class="hmc-value" id="statVolume">—</span>
         </div>
-        <div class="hmc-chip">
+        <div class="hmc-chip" data-chip-key="7d-change">
           <span class="hmc-label">7d</span>
           <span class="hmc-value" id="stat7d">—</span>
         </div>
@@ -45,25 +45,25 @@
           <button class="of-tab" data-window="1h">1H</button>
           <button class="of-tab" data-window="24h">24H</button>
         </div>
-        <div class="hof-trend">
-          <div class="hof-stat"><span class="hof-label" id="ofLabelBuy">5m Buy</span><span class="hof-val buy" id="ofCurBuy">—</span></div>
+        <div class="hof-trend" data-drop-zone="hof-trend">
+          <div class="hof-stat" data-chip-key="flow-buy"><span class="hof-label" id="ofLabelBuy">5m Buy</span><span class="hof-val buy" id="ofCurBuy">—</span></div>
           <div class="trend-arrow-block" id="ofTrendBlock"><div class="trend-arrow" id="ofTrendArrow">→</div><div class="trend-text" id="ofTrendText">—</div></div>
-          <div class="hof-stat"><span class="hof-label" id="ofLabelSell">5m Sell</span><span class="hof-val sell" id="ofCurSell">—</span></div>
+          <div class="hof-stat" data-chip-key="flow-sell"><span class="hof-label" id="ofLabelSell">5m Sell</span><span class="hof-val sell" id="ofCurSell">—</span></div>
         </div>
-        <div class="hof-trades">
-          <div class="lt-chip buy">
+        <div class="hof-trades" data-drop-zone="hof-trades">
+          <div class="lt-chip buy" data-chip-key="last-buy">
             <div class="lt-label">Last Buy</div>
             <div class="lt-main"><span class="lt-price" id="lastBuyPrice">—</span><span class="lt-qty" id="lastBuyQty">—</span></div>
           </div>
-          <div class="lt-chip sell">
+          <div class="lt-chip sell" data-chip-key="last-sell">
             <div class="lt-label">Last Sell</div>
             <div class="lt-main"><span class="lt-price" id="lastSellPrice">—</span><span class="lt-qty" id="lastSellQty">—</span></div>
           </div>
-          <div class="lt-chip rate" id="ofBuyRateChip">
+          <div class="lt-chip rate" id="ofBuyRateChip" data-chip-key="eth-s-buy">
             <div class="lt-label">ETH/s Buy</div>
             <div class="lt-main"><span class="lt-price" id="ofBuyRate">—</span><span class="lt-qty lt-sub">(10s)</span></div>
           </div>
-          <div class="lt-chip rate sell" id="ofSellRateChip">
+          <div class="lt-chip rate sell" id="ofSellRateChip" data-chip-key="eth-s-sell">
             <div class="lt-label">ETH/s Sell</div>
             <div class="lt-main"><span class="lt-price" id="ofSellRate">—</span><span class="lt-qty lt-sub">(10s)</span></div>
           </div>
@@ -106,18 +106,19 @@
             <span class="buy-chip-price" id="baChipPrice" title="Live ETH price">—</span>
           </button>
           <button class="buy-chip-refresh" id="buyChipRefresh" title="Force a fresh AI recommendation">↻</button>
+
         </div>
         <div class="price-meta">
           <span class="price-change" id="priceChange">—</span>
           <span class="price-change-label">24h</span>
         </div>
         <!-- Minimal inline stats — previously full cards. -->
-        <div class="price-minimal-stats">
-          <span class="pm-stat">30d <strong id="stat30d">—</strong></span>
+        <div class="price-minimal-stats" data-drop-zone="hero-stats">
+          <span class="pm-stat" data-chip-key="30d-change">30d <strong id="stat30d">—</strong></span>
           <span class="pm-sep">·</span>
-          <span class="pm-stat">ATH <strong id="statATH">—</strong></span>
+          <span class="pm-stat" data-chip-key="ath">ATH <strong id="statATH">—</strong></span>
           <span class="pm-sep">·</span>
-          <span class="pm-stat">Rank <strong id="statRank">—</strong></span>
+          <span class="pm-stat" data-chip-key="rank">Rank <strong id="statRank">—</strong></span>
         </div>
         <div class="last-updated" id="lastUpdated">Fetching…</div>
         <!-- AI 7-day forecast chip — sits inline with the price row.
@@ -169,7 +170,6 @@
             </div>
             <div class="fc-actions">
               <button class="predict-btn" id="forecastShowOnChart">👁 Show on Chart</button>
-              <button class="save-set-btn" id="forecastRefresh" title="Force a fresh Claude run">↻ Re-run Forecast</button>
             </div>
           </div>
         </div>
@@ -495,31 +495,31 @@
   <footer class="site-footer" id="siteFooter">
     <!-- Market Vitals frame -->
     <div class="market-vitals" id="marketVitals">
-      <div class="mv-group" data-group="struct">
+      <div class="mv-group" data-group="struct" data-drop-zone="mv-struct">
         <div class="mv-group-title">Price & Structure</div>
-        <div class="mv-chip" title="24h global crypto trading volume (USD)"><span class="mv-label">Vol 24h</span><span class="mv-value" id="mvVolume">—</span></div>
-        <div class="mv-chip" title="Binance ETH perp open interest"><span class="mv-label">OI</span><span class="mv-value" id="mvOI">—</span></div>
-        <div class="mv-chip" title="Binance ETH perp funding rate — positive = longs paying"><span class="mv-label">Funding</span><span class="mv-value" id="mvFunding">—</span></div>
+        <div class="mv-chip" data-chip-key="mv-vol24h" title="24h global crypto trading volume (USD)"><span class="mv-label">Vol 24h</span><span class="mv-value" id="mvVolume">—</span></div>
+        <div class="mv-chip" data-chip-key="mv-oi" title="Binance ETH perp open interest"><span class="mv-label">OI</span><span class="mv-value" id="mvOI">—</span></div>
+        <div class="mv-chip" data-chip-key="mv-funding" title="Binance ETH perp funding rate — positive = longs paying"><span class="mv-label">Funding</span><span class="mv-value" id="mvFunding">—</span></div>
       </div>
-      <div class="mv-group" data-group="tech">
+      <div class="mv-group" data-group="tech" data-drop-zone="mv-tech">
         <div class="mv-group-title">Technicals</div>
-        <div class="mv-chip" title="RSI(14)"><span class="mv-label">RSI14</span><span class="mv-value" id="mvRsi">—</span></div>
-        <div class="mv-chip" title="Price vs EMA20"><span class="mv-label">vs EMA20</span><span class="mv-value" id="mvEma20">—</span></div>
-        <div class="mv-chip" title="Price vs EMA50"><span class="mv-label">vs EMA50</span><span class="mv-value" id="mvEma50">—</span></div>
-        <div class="mv-chip" title="Price vs EMA200"><span class="mv-label">vs EMA200</span><span class="mv-value" id="mvEma200">—</span></div>
-        <div class="mv-chip" title="MACD cross / direction"><span class="mv-label">MACD</span><span class="mv-value" id="mvMacd">—</span></div>
-        <div class="mv-chip" title="Bollinger bandwidth %"><span class="mv-label">BB Width</span><span class="mv-value" id="mvBB">—</span></div>
+        <div class="mv-chip" data-chip-key="mv-rsi" title="RSI(14)"><span class="mv-label">RSI14</span><span class="mv-value" id="mvRsi">—</span></div>
+        <div class="mv-chip" data-chip-key="mv-ema20" title="Price vs EMA20"><span class="mv-label">vs EMA20</span><span class="mv-value" id="mvEma20">—</span></div>
+        <div class="mv-chip" data-chip-key="mv-ema50" title="Price vs EMA50"><span class="mv-label">vs EMA50</span><span class="mv-value" id="mvEma50">—</span></div>
+        <div class="mv-chip" data-chip-key="mv-ema200" title="Price vs EMA200"><span class="mv-label">vs EMA200</span><span class="mv-value" id="mvEma200">—</span></div>
+        <div class="mv-chip" data-chip-key="mv-macd" title="MACD cross / direction"><span class="mv-label">MACD</span><span class="mv-value" id="mvMacd">—</span></div>
+        <div class="mv-chip" data-chip-key="mv-bb" title="Bollinger bandwidth %"><span class="mv-label">BB Width</span><span class="mv-value" id="mvBB">—</span></div>
       </div>
-      <div class="mv-group" data-group="onchain">
+      <div class="mv-group" data-group="onchain" data-drop-zone="mv-onchain">
         <div class="mv-group-title">On-Chain</div>
-        <div class="mv-chip" title="ETH gas price (gwei)"><span class="mv-label">Gas</span><span class="mv-value" id="mvGas">—</span></div>
-        <div class="mv-chip" title="BTC network hash rate (EH/s)"><span class="mv-label">BTC Hash</span><span class="mv-value" id="mvHash">—</span></div>
+        <div class="mv-chip" data-chip-key="mv-gas" title="ETH gas price (gwei)"><span class="mv-label">Gas</span><span class="mv-value" id="mvGas">—</span></div>
+        <div class="mv-chip" data-chip-key="mv-hash" title="BTC network hash rate (EH/s)"><span class="mv-label">BTC Hash</span><span class="mv-value" id="mvHash">—</span></div>
       </div>
-      <div class="mv-group" data-group="macro">
+      <div class="mv-group" data-group="macro" data-drop-zone="mv-macro">
         <div class="mv-group-title">Macro</div>
-        <div class="mv-chip" title="Bitcoin market-cap dominance"><span class="mv-label">BTC Dom</span><span class="mv-value" id="mvBtcDom">—</span></div>
-        <div class="mv-chip" title="ETH/BTC ratio"><span class="mv-label">ETH/BTC</span><span class="mv-value" id="mvEthBtc">—</span></div>
-        <div class="mv-chip" title="Crypto Fear &amp; Greed Index (0–100)"><span class="mv-label">F&amp;G</span><span class="mv-value" id="mvFG">—</span></div>
+        <div class="mv-chip" data-chip-key="mv-btcdom" title="Bitcoin market-cap dominance"><span class="mv-label">BTC Dom</span><span class="mv-value" id="mvBtcDom">—</span></div>
+        <div class="mv-chip" data-chip-key="mv-ethbtc" title="ETH/BTC ratio"><span class="mv-label">ETH/BTC</span><span class="mv-value" id="mvEthBtc">—</span></div>
+        <div class="mv-chip" data-chip-key="mv-fg" title="Crypto Fear &amp; Greed Index (0–100)"><span class="mv-label">F&amp;G</span><span class="mv-value" id="mvFG">—</span></div>
       </div>
     </div>
 
@@ -591,6 +591,7 @@
   <script src="/js/forecast.js"></script>
   <script src="/js/dayinfo.js"></script>
   <script src="/js/predhistory.js"></script>
+  <script src="/js/chips.js"></script>
   <script>
     // Footer hide/show toggle — persisted across reloads.
     (function() {

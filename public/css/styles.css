@@ -90,6 +90,16 @@ a:hover { text-decoration: underline; }
 
 .header-right { display: flex; align-items: center; gap: 10px; }
 
+.weather-nav-link {
+  display: flex; align-items: center; gap: 5px;
+  padding: 5px 12px; border-radius: 6px;
+  border: 1px solid var(--border);
+  color: var(--text-secondary); text-decoration: none;
+  font-size: 0.75rem; font-weight: 600; letter-spacing: 0.5px;
+  transition: all 0.2s; white-space: nowrap;
+}
+.weather-nav-link:hover { background: var(--border); color: var(--text); }
+
 .status-dot {
   width: 8px; height: 8px;
   border-radius: 50%;
@@ -3270,6 +3280,32 @@ body.footer-hidden .news-popup { bottom: 120px; }
   margin-top: 2px;
   font-variant-numeric: tabular-nums;
 }
+/* Narrative + key event: hidden in compact mode, shown when tiles expand */
+.chart-aligned-strip .forecast-tile .dt-extras { display: none; }
+.chart-aligned-strip.expanded-tiles .forecast-tile .dt-extras {
+  display: block;
+  margin-top: 4px;
+  border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+  padding-top: 4px;
+}
+.chart-aligned-strip .forecast-tile .dt-fc-narrative {
+  font-size: 0.62rem;
+  line-height: 1.4;
+  color: var(--text2);
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.chart-aligned-strip .forecast-tile .dt-key-event {
+  font-size: 0.6rem;
+  color: var(--accent);
+  margin-top: 3px;
+  font-weight: 600;
+}
+/* Expanded forecast tiles need more height than historical tiles */
+.chart-aligned-strip.expanded-tiles .forecast-col { width: 110px; }
+.chart-aligned-strip.expanded-tiles .forecast-tile { min-height: 80px; }
 
 /* ═══════════════════════════════════════════════════════════
    FORECAST DAY DETAIL MODAL
@@ -3409,4 +3445,80 @@ body.footer-hidden .news-popup { bottom: 120px; }
 .ph-narrative {
   font-size: 0.83rem; color: var(--text2); line-height: 1.5;
   border-left: 3px solid var(--border); padding-left: 10px;
+}
+
+/* ── Chip Info Popup ─────────────────────────────────────────── */
+.cip {
+  position: fixed;
+  z-index: 9999;
+  width: 300px;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px 13px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.45);
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity .15s ease, transform .15s ease;
+}
+.cip.cip-visible {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+.cip-arrow {
+  position: absolute;
+  left: var(--cip-arrow-left, 50%);
+  transform: translateX(-50%);
+  width: 10px;
+  height: 6px;
+  overflow: hidden;
+}
+.cip-arrow::before {
+  content: '';
+  position: absolute;
+  width: 10px; height: 10px;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  left: 0;
+}
+.cip.cip-below .cip-arrow { top: -6px; }
+.cip.cip-below .cip-arrow::before { transform: rotate(45deg) translate(-1px, 1px); }
+.cip.cip-above .cip-arrow { bottom: -6px; top: auto; }
+.cip.cip-above .cip-arrow::before { transform: rotate(45deg) translate(1px, -1px); }
+
+.cip-title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  margin-bottom: 5px;
+}
+.cip-body {
+  font-size: 0.8rem;
+  color: var(--text2);
+  line-height: 1.55;
+}
+
+/* ── Chip Drag & Drop ────────────────────────────────────────── */
+[data-chip-key] {
+  cursor: grab;
+  user-select: none;
+}
+[data-chip-key]:active { cursor: grabbing; }
+.chip-dragging { opacity: 0 !important; }
+.chip-drag-placeholder {
+  border: 2px dashed var(--accent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  pointer-events: none;
+  flex-shrink: 0;
+}
+[data-drop-zone].chip-drop-active {
+  outline: 2px dashed color-mix(in srgb, var(--accent) 40%, transparent);
+  outline-offset: 2px;
+  border-radius: 6px;
 }
