@@ -214,8 +214,9 @@ function positionCandleStrip() {
   const ts = chart.timeScale();
   const stripWidth = strip.clientWidth;
   let visible = 0;
-  let maxX = 0; // track rightmost x to place today-col beyond last candle
-  strip.querySelectorAll('.day-col:not(.today-col)').forEach(col => {
+  let maxHistX = 0; // rightmost x among HISTORICAL tiles only (not forecast, not today)
+  // Position historical cols first, tracking their max x for today fallback.
+  strip.querySelectorAll('.day-col:not(.today-col):not(.forecast-col)').forEach(col => {
     const ms = parseInt(col.dataset.ts);
     if (!isFinite(ms)) return;
     const x = ts.timeToCoordinate(Math.floor(ms / 1000));
@@ -224,18 +225,17 @@ function positionCandleStrip() {
     } else {
       col.style.display = '';
       col.style.left = `${x}px`;
-      if (x > maxX) maxX = x;
+      if (x > maxHistX) maxHistX = x;
       visible++;
     }
   });
-  // Position today-col just after the last visible historical col.
+  // Position today-col right after the last historical tile.
   const todayCol = strip.querySelector('.today-col');
   if (todayCol) {
     const todayMs = parseInt(todayCol.dataset.ts);
     let todayX = isFinite(todayMs) ? ts.timeToCoordinate(Math.floor(todayMs / 1000)) : null;
     if (todayX == null || todayX < 0 || todayX > stripWidth + 60) {
-      // Fallback: place just past the last visible historical tile
-      todayX = maxX > 0 ? maxX + 90 : null;
+      todayX = maxHistX > 0 ? maxHistX + 90 : null;
     }
     if (todayX != null && todayX >= 0 && todayX <= stripWidth + 60) {
       todayCol.style.display = '';
@@ -245,6 +245,19 @@ function positionCandleStrip() {
       todayCol.style.display = 'none';
     }
   }
+  // Position forecast cols normally via their timestamps.
+  strip.querySelectorAll('.forecast-col').forEach(col => {
+    const ms = parseInt(col.dataset.ts);
+    if (!isFinite(ms)) return;
+    const x = ts.timeToCoordinate(Math.floor(ms / 1000));
+    if (x == null || x < -60 || x > stripWidth + 60) {
+      col.style.display = 'none';
+    } else {
+      col.style.display = '';
+      col.style.left = `${x}px`;
+      visible++;
+    }
+  });
   const expanded = visible > 0 && visible <= 14;
   strip.classList.toggle('expanded-tiles', expanded);
 }
