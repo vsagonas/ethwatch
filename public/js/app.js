@@ -810,6 +810,7 @@ async function loadAllData({ forceHistory = false } = {}) {
     if (histJson) {
       updatePriceChart(histJson);
       buildRSIChart(histJson);
+      window.repaintRsiChip?.();
     } else {
       // No history refetch — just nudge the tail of the existing chart.
       updateLastPricePoint(priceData);

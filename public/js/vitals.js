@@ -100,6 +100,17 @@ async function refreshVitals() {
   } catch { /* silent — keeps the existing chip values */ }
 }
 
+window.repaintRsiChip = function() {
+  const rsi = window.state?.historyData?.indicators?.rsi;
+  if (!Array.isArray(rsi)) return;
+  for (let i = rsi.length - 1; i >= 0; i--) {
+    if (rsi[i] != null) {
+      setChip('mvRsi', rsi[i].toFixed(1), rsi[i] > 70 ? 'down' : rsi[i] < 30 ? 'up' : 'neutral');
+      break;
+    }
+  }
+};
+
 document.addEventListener('DOMContentLoaded', () => {
   refreshVitals();
   setInterval(refreshVitals, 5 * 60 * 1000);

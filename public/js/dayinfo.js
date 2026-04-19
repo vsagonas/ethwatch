@@ -189,7 +189,7 @@ let _dayDetailsOn = false;
 function _updateToggleBtn() {
   const btn = document.getElementById('dayInfoToggleBtn');
   if (!btn) return;
-  btn.textContent = _dayDetailsOn ? '📋 Hide Days' : '📋 Day Details';
+  btn.textContent = _dayDetailsOn ? '📋 Hide Days' : '📋 Show Days';
   btn.classList.toggle('active', _dayDetailsOn);
 }
 
