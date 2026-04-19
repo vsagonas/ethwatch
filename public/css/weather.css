@@ -96,6 +96,8 @@ html, body { min-height: 100vh; background: var(--sky-bot); color: var(--text); 
 
 /* ── LAYOUT ──────────────────────────────────────── */
 body > *:not(.sky) { position: relative; z-index: 1; }
+/* Modals must use position:fixed to overlay; override the rule above */
+.wx-modal-backdrop { position: fixed !important; }
 
 /* ── HEADER ──────────────────────────────────────── */
 .wx-header {

@@ -1,6 +1,6 @@
 {
   "name": "ethwatch",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "description": "Live Ethereum tracker with candlestick charts, AI forecasts, pattern recognition, and Oracle prophecy",
   "main": "server.js",
   "scripts": {

@@ -818,6 +818,7 @@ async function loadAllData({ forceHistory = false } = {}) {
 
     if (!infoCache) {
       infoCache = await loadInfo().catch(() => null);
+      if (infoCache) window.ethInfo = infoCache;
     }
     updateStats(priceData, infoCache);
 

@@ -38,16 +38,25 @@ function injectTodayCard(strips, currency) {
   // Don't duplicate if API already returned today's row
   if (monthlyCache?.days?.some(d => d.date === today)) return;
 
-  const ts  = new Date(today + 'T12:00:00Z').getTime();
-  const cur = currency || 'usd';
+  const ts     = new Date(today + 'T12:00:00Z').getTime();
+  const cur    = currency || 'usd';
   const priceObj = window.state?.currentPrice;
   const price    = priceObj?.[cur];
   const change   = priceObj?.[`${cur}_24h_change`];
   const sym      = cur === 'eur' ? '€' : '$';
 
-  const moveCls = change == null ? '' : change >= 0 ? 'up' : 'down';
-  const moveStr = change == null ? '—' : `${change >= 0 ? '+' : ''}${change.toFixed(2)}%`;
-  const priceStr = price != null ? `${sym}${Math.round(price).toLocaleString()}` : '—';
+  // H/L from eth-info (loaded once on boot, cached)
+  const infoData = window.ethInfo?.[cur];
+  const high24h  = infoData?.high_24h ?? null;
+  const low24h   = infoData?.low_24h  ?? null;
+
+  const moveCls  = change == null ? '' : change >= 0 ? 'up' : 'down';
+  const moveStr  = change == null ? '—' : `${change >= 0 ? '+' : ''}${change.toFixed(2)}%`;
+
+  const fmtShort = v => v == null ? '—' : `${sym}${Math.round(v).toLocaleString()}`;
+  const decline  = (price != null && high24h != null && high24h > 0)
+    ? ((price - high24h) / high24h) * 100 : null;
+  const declineStr = decline == null ? '' : `from H ${decline >= 0 ? '+' : ''}${decline.toFixed(1)}%`;
 
   const html = `
     <div class="day-col today-col" data-date="${today}" data-ts="${ts}" style="left:-9999px">
@@ -56,7 +65,11 @@ function injectTodayCard(strips, currency) {
         <div class="dt-move ${moveCls}">${moveStr}</div>
         <div class="dt-verdict">LIVE</div>
         <div class="dt-extras">
-          <div class="dt-hl"><span class="dt-h">${priceStr}</span></div>
+          <div class="dt-hl">
+            <span class="dt-h">H ${fmtShort(high24h)}</span>
+            <span class="dt-l">L ${fmtShort(low24h)}</span>
+          </div>
+          ${declineStr ? `<div class="dt-decline ${decline >= 0 ? 'up' : 'down'}">${declineStr}</div>` : ''}
         </div>
       </button>
       <div class="hope-cell pending" title="Today — live">

@@ -279,92 +279,109 @@ function initManualPrediction() {
 // ── PREDICTION TABLE ──────────────────────────────────────────────
 let liveForecastId = null; // track which row is currently set as live
 
+let allPredictions = [];
+let shownCount = 0;
+const PRED_PAGE_INIT = 5;
+const PRED_PAGE_MORE = 10;
+
+function buildPredRow(p, liveTs) {
+  const fc       = p.raw_result;
+  const headline = fc?.headline || p.narrative || '';
+  const dir      = p.predicted_direction || '—';
+  const isManual = p.source_ref === 'manual';
+  const histDays = fc?.history_days;
+  const dirCls   = dir === 'bullish' ? 'bullish' : dir === 'bearish' ? 'bearish' : 'neutral';
+  const accHtml  = p.accuracy_score != null
+    ? `<span class="acc-bar"><span class="acc-bar-fill" style="width:${p.accuracy_score}%"></span></span>${p.accuracy_score.toFixed(0)}`
+    : '—';
+  const rowTs  = fc?.generated_ts || fc?.anchor_ts;
+  const isLive = liveTs && rowTs && Math.abs(rowTs - liveTs) < 5000;
+  if (isLive) liveForecastId = p.id;
+
+  const liveBtn = fc?.daily_breakdown?.length
+    ? `<button class="adm-btn set-live-btn ${isLive ? 'primary' : ''}" data-id="${p.id}" title="Make this the live forecast on Watch+Weather">${isLive ? '✓ LIVE' : 'Set Live'}</button>`
+    : '<span class="dim">—</span>';
+  const delBtn = `<button class="adm-btn del-fc-btn" data-id="${p.id}" title="Delete this forecast" style="padding:2px 8px;font-size:0.7rem;color:var(--down);border-color:var(--down)">🗑</button>`;
+
+  return `<tr class="${isLive ? 'row-latest' : ''}">
+    <td>${liveBtn}</td>
+    <td>${delBtn}</td>
+    <td class="dim">${escHtml(fmtTs(p.created_ts))}</td>
+    <td><span class="badge ${isManual ? 'manual' : 'ai'}">${isManual ? 'MANUAL' : 'AUTO'}</span>${histDays ? `<span style="font-size:0.65rem;color:var(--text-dim);margin-left:4px">${histDays}d</span>` : ''}</td>
+    <td><span class="badge ${dirCls}">${escHtml(dir.toUpperCase())}</span></td>
+    <td style="color:${dir==='bullish'?'var(--up)':dir==='bearish'?'var(--down)':'var(--neutral)'};font-weight:700">${fmtPct(p.predicted_move_pct)}</td>
+    <td class="dim">${p.confidence != null ? p.confidence + '%' : '—'}</td>
+    <td class="dim">${escHtml(p.target_date || '—')}</td>
+    <td class="dim">${fmtPrice(p.eth_price_at_prediction)}</td>
+    <td style="color:${(p.actual_move_pct??0)>=0?'var(--up)':'var(--down)'}">${fmtPct(p.actual_move_pct)}</td>
+    <td>${accHtml}</td>
+    <td class="td-headline" title="${escHtml(headline)}">${escHtml(headline.slice(0, 70))}${headline.length > 70 ? '…' : ''}</td>
+  </tr>`;
+}
+
+function wirePredButtons(tbody) {
+  tbody.querySelectorAll('.set-live-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const id = parseInt(btn.dataset.id);
+      btn.disabled = true; btn.textContent = '…';
+      try {
+        const r = await fetch(`/api/admin/set-live-forecast/${id}`, { method: 'POST' }).then(x => x.json());
+        if (r.success) { await loadPredictions(); }
+        else { btn.textContent = '✗'; setTimeout(() => { btn.disabled = false; btn.textContent = 'Set Live'; }, 1500); }
+      } catch { btn.textContent = '✗'; btn.disabled = false; }
+    });
+  });
+  tbody.querySelectorAll('.del-fc-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (!confirm('Delete this forecast from the database?')) return;
+      const id = parseInt(btn.dataset.id);
+      btn.disabled = true;
+      try {
+        const r = await fetch(`/api/admin/prediction/${id}`, { method: 'DELETE' }).then(x => x.json());
+        if (r.success) { await loadPredictions(); }
+        else { btn.textContent = '✗'; setTimeout(() => { btn.disabled = false; btn.textContent = '🗑'; }, 1500); }
+      } catch { btn.textContent = '✗'; btn.disabled = false; }
+    });
+  });
+}
+
+function renderPredRows(liveTs) {
+  const tbody = document.getElementById('predTbody');
+  const slice = allPredictions.slice(0, shownCount);
+  const remaining = allPredictions.length - shownCount;
+
+  const rowsHtml = slice.map(p => buildPredRow(p, liveTs)).join('');
+  const moreBtn = remaining > 0
+    ? `<tr id="loadMoreRow"><td colspan="12" style="text-align:center;padding:10px">
+        <button class="adm-btn" id="loadMoreBtn">Load ${Math.min(remaining, PRED_PAGE_MORE)} more (${remaining} remaining)</button>
+       </td></tr>`
+    : '';
+
+  tbody.innerHTML = rowsHtml + moreBtn;
+  wirePredButtons(tbody);
+
+  document.getElementById('loadMoreBtn')?.addEventListener('click', () => {
+    shownCount = Math.min(shownCount + PRED_PAGE_MORE, allPredictions.length);
+    renderPredRows(liveTs);
+  });
+}
+
 async function loadPredictions() {
   const tbody = document.getElementById('predTbody');
   try {
-    // Get current live forecast to mark it
     const liveRes = await fetch('/api/forecast-7d').then(r => r.json()).catch(() => null);
     const liveTs  = liveRes?.data?.generated_ts || liveRes?.data?.anchor_ts || null;
 
     const res = await fetch('/api/predictions/history?limit=200&type=ai_forecast').then(r => r.json());
     if (!res.success) { tbody.innerHTML = `<tr><td colspan="12" class="adm-loading">Error: ${escHtml(res.error)}</td></tr>`; return; }
-    const rows = res.predictions || [];
-    document.getElementById('predCount').textContent = `(${rows.length})`;
 
-    if (!rows.length) { tbody.innerHTML = '<tr><td colspan="12" class="adm-loading">No predictions yet.</td></tr>'; return; }
+    allPredictions = res.predictions || [];
+    document.getElementById('predCount').textContent = `(${allPredictions.length})`;
 
-    tbody.innerHTML = rows.map((p, i) => {
-      const fc       = p.raw_result;
-      const headline = fc?.headline || p.narrative || '';
-      const dir      = p.predicted_direction || '—';
-      const isManual = p.source_ref === 'manual';
-      const histDays = fc?.history_days;
-      const dirCls   = dir === 'bullish' ? 'bullish' : dir === 'bearish' ? 'bearish' : 'neutral';
-      const accHtml  = p.accuracy_score != null
-        ? `<span class="acc-bar"><span class="acc-bar-fill" style="width:${p.accuracy_score}%"></span></span>${p.accuracy_score.toFixed(0)}`
-        : '—';
-      // Detect if this row is currently live (match by generated_ts)
-      const rowTs  = fc?.generated_ts || fc?.anchor_ts;
-      const isLive = liveTs && rowTs && Math.abs(rowTs - liveTs) < 5000;
-      if (isLive) liveForecastId = p.id;
+    if (!allPredictions.length) { tbody.innerHTML = '<tr><td colspan="12" class="adm-loading">No predictions yet.</td></tr>'; return; }
 
-      const liveBtn = fc?.daily_breakdown?.length
-        ? `<button class="adm-btn set-live-btn ${isLive ? 'primary' : ''}" data-id="${p.id}" title="Make this the live forecast on Watch+Weather">${isLive ? '✓ LIVE' : 'Set Live'}</button>`
-        : '<span class="dim">—</span>';
-
-      const delBtn = `<button class="adm-btn del-fc-btn" data-id="${p.id}" title="Delete this forecast" style="padding:2px 8px;font-size:0.7rem;color:var(--down);border-color:var(--down)">🗑</button>`;
-
-      return `<tr class="${isLive ? 'row-latest' : ''}">
-        <td>${liveBtn}</td>
-        <td>${delBtn}</td>
-        <td class="dim">${escHtml(fmtTs(p.created_ts))}</td>
-        <td><span class="badge ${isManual ? 'manual' : 'ai'}">${isManual ? 'MANUAL' : 'AUTO'}</span>${histDays ? `<span style="font-size:0.65rem;color:var(--text-dim);margin-left:4px">${histDays}d</span>` : ''}</td>
-        <td><span class="badge ${dirCls}">${escHtml(dir.toUpperCase())}</span></td>
-        <td style="color:${dir==='bullish'?'var(--up)':dir==='bearish'?'var(--down)':'var(--neutral)'};font-weight:700">${fmtPct(p.predicted_move_pct)}</td>
-        <td class="dim">${p.confidence != null ? p.confidence + '%' : '—'}</td>
-        <td class="dim">${escHtml(p.target_date || '—')}</td>
-        <td class="dim">${fmtPrice(p.eth_price_at_prediction)}</td>
-        <td style="color:${(p.actual_move_pct??0)>=0?'var(--up)':'var(--down)'}">${fmtPct(p.actual_move_pct)}</td>
-        <td>${accHtml}</td>
-        <td class="td-headline" title="${escHtml(headline)}">${escHtml(headline.slice(0, 70))}${headline.length > 70 ? '…' : ''}</td>
-      </tr>`;
-    }).join('');
-
-    // Wire Set Live buttons
-    tbody.querySelectorAll('.set-live-btn').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const id = parseInt(btn.dataset.id);
-        btn.disabled = true;
-        btn.textContent = '…';
-        try {
-          const r = await fetch(`/api/admin/set-live-forecast/${id}`, { method: 'POST' }).then(x => x.json());
-          if (r.success) {
-            await loadPredictions();
-          } else {
-            btn.textContent = '✗';
-            setTimeout(() => { btn.disabled = false; btn.textContent = 'Set Live'; }, 1500);
-          }
-        } catch { btn.textContent = '✗'; btn.disabled = false; }
-      });
-    });
-
-    // Wire Delete buttons
-    tbody.querySelectorAll('.del-fc-btn').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        if (!confirm('Delete this forecast from the database?')) return;
-        const id = parseInt(btn.dataset.id);
-        btn.disabled = true;
-        try {
-          const r = await fetch(`/api/admin/prediction/${id}`, { method: 'DELETE' }).then(x => x.json());
-          if (r.success) {
-            await loadPredictions();
-          } else {
-            btn.textContent = '✗';
-            setTimeout(() => { btn.disabled = false; btn.textContent = '🗑'; }, 1500);
-          }
-        } catch { btn.textContent = '✗'; btn.disabled = false; }
-      });
-    });
+    shownCount = PRED_PAGE_INIT;
+    renderPredRows(liveTs);
   } catch (err) {
     tbody.innerHTML = `<tr><td colspan="11" class="adm-loading">${escHtml(err.message)}</td></tr>`;
   }
