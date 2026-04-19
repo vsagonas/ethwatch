@@ -353,16 +353,6 @@ function restoreSavedForecast() {
 document.addEventListener('DOMContentLoaded', () => {
   restoreSavedForecast();
 
-  // 🔮 Forecast button (in chart controls) — open forecast detail modal
-  document.getElementById('aiForecastInfoBtn')?.addEventListener('click', () => {
-    if (!currentForecast) {
-      runForecast({ force: false });
-      return;
-    }
-    renderForecastModal(currentForecast);
-    openForecastModal();
-  });
-
   // Close the forecast day-detail popup.
   const closeDayModal = () => {
     const m = document.getElementById('forecastDayModal');
