@@ -502,6 +502,19 @@ async function loadAndRenderCandlestick(days, currency) {
 // ── WIRE UP EVENTS ─────────────────────────────────────────
 const CHART_TYPE_LS_KEY = 'eth_chart_type';
 
+function moveStripToContainer(containerId) {
+  const strip = document.getElementById('monthStrip');
+  if (!strip) return;
+  const wrapper = document.getElementById(containerId);
+  if (!wrapper) return;
+  const canvasHolder = wrapper.querySelector('.chart-canvas-holder');
+  if (canvasHolder) {
+    wrapper.insertBefore(strip, canvasHolder);
+  } else {
+    wrapper.appendChild(strip);
+  }
+}
+
 function applyChartType(type) {
   const lineWrapper   = document.getElementById('lineChartWrapper');
   const candleWrapper = document.getElementById('candleChartWrapper');
@@ -515,6 +528,7 @@ function applyChartType(type) {
     if (lineWrapper)   lineWrapper.style.display   = 'none';
     if (candleWrapper) candleWrapper.style.display = '';
     if (lineHint)      lineHint.style.display      = 'none';
+    moveStripToContainer('candleChartWrapper');
     const days = parseInt(document.querySelector('.range-btn.active:not(#zoomOutBtn)')?.dataset.days || 7);
     const cur  = document.querySelector('.currency-btn.active')?.dataset.currency || 'usd';
     loadAndRenderCandlestick(days, cur);
@@ -522,6 +536,9 @@ function applyChartType(type) {
     if (lineWrapper)   lineWrapper.style.display   = '';
     if (candleWrapper) candleWrapper.style.display = 'none';
     if (lineHint)      lineHint.style.display      = '';
+    moveStripToContainer('lineChartWrapper');
+    // Re-align strip to line chart after move.
+    window.positionStripOnChart?.();
     // syncDayInfo (dayinfo.js) handles visibility on chart-type-btn click.
   }
 

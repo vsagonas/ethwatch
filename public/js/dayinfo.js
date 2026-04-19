@@ -30,7 +30,6 @@ function todayIso() {
 function hideAllDayContent() {
   document.getElementById('dayInfoCard')?.style.setProperty('display','none');
   document.getElementById('dayInfoCardLine')?.style.setProperty('display','none');
-  document.getElementById('candleMonthStrip')?.style.setProperty('display','none');
   document.getElementById('monthStrip')?.style.setProperty('display','none');
 }
 
@@ -75,8 +74,7 @@ function showEmptyDayInfo(reason) {
 function _showActiveStrip() {
   if (!_dayDetailsOn) return;
   const inCandleMode = document.querySelector('.chart-type-btn[data-type="candles"]')?.classList.contains('active');
-  // Always hide the aligned strips when the day-info card is visible.
-  document.getElementById('candleMonthStrip')?.style.setProperty('display','none');
+  // Always hide the aligned strip when the day-info card is visible.
   document.getElementById('monthStrip')?.style.setProperty('display','none');
   if (inCandleMode) {
     const el = document.getElementById('dayInfoCard');
@@ -207,15 +205,13 @@ function syncDayInfo() {
   if (!_dayDetailsOn) {
     hideAllDayContent();
   } else if (days === 1) {
-    // 1D: show the day-info chip card, hide the aligned strips.
-    document.getElementById('candleMonthStrip')?.style.setProperty('display','none');
+    // 1D: show the day-info chip card, hide the aligned strip.
     document.getElementById('monthStrip')?.style.setProperty('display','none');
     loadDayInfo();
   } else {
     // 1W / 1M / 3M / 1Y: hide day-info card, show the aligned day-list strip.
     document.getElementById('dayInfoCard')?.style.setProperty('display','none');
     document.getElementById('dayInfoCardLine')?.style.setProperty('display','none');
-    document.getElementById('candleMonthStrip')?.style.removeProperty('display');
     document.getElementById('monthStrip')?.style.removeProperty('display');
     window.loadMonthly?.(cur, _stripDays());
   }

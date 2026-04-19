@@ -181,12 +181,10 @@ function clearActiveForecast({ persistPref = true } = {}) {
 }
 
 // ── Forecast day cards in the chart-aligned strip ─────────────
-// Inject 7 forecast tiles (one per day) into BOTH monthStrip and
-// candleMonthStrip so the dashed overlay line always has matching tiles
-// beneath it regardless of which chart mode is active.
-// Tiles are absolutely-positioned via each chart's coordinate system and
-// move with pan/zoom because the strip-position hooks hit all .day-col nodes.
-// Click → popup with narrative + reasoning for that day.
+// Inject 7 forecast tiles (one per day) into monthStrip (shared between
+// line and candle modes). Tiles are absolutely-positioned and move with
+// pan/zoom because positionStripOnChart / positionCandleStrip repositions
+// all .day-col nodes. Click → popup with narrative + reasoning for that day.
 function removeForecastDayCards() {
   document.querySelectorAll('.day-col.forecast-col').forEach(el => el.remove());
 }
@@ -221,32 +219,28 @@ function renderForecastDayCards(forecast) {
     return { d, dayTs, pct, cls, dayLabel, priceStr };
   });
 
-  ['monthStrip', 'candleMonthStrip'].forEach(stripId => {
-    const strip = document.getElementById(stripId);
-    if (!strip) return;
-    tiles.forEach(({ d, dayTs, pct, cls, dayLabel, priceStr }) => {
-      const col = document.createElement('div');
-      col.className = 'day-col forecast-col';
-      col.dataset.ts  = String(dayTs);
-      col.dataset.day = String(d.day);
-      col.innerHTML = `
-        <div class="day-tile forecast-tile ${cls}">
-          <div class="dt-date">D${d.day} · ${dayLabel}</div>
-          <div class="dt-move">${pct >= 0 ? '+' : ''}${Number(pct).toFixed(2)}%</div>
-          <div class="dt-verdict">FORECAST</div>
-          <div class="dt-fc-price">${priceStr}</div>
-          <div class="dt-extras">
-            ${d.narrative ? `<div class="dt-fc-narrative">${fcEscape(d.narrative)}</div>` : ''}
-            ${d.key_event ? `<div class="dt-key-event">⚡ ${fcEscape(d.key_event)}</div>` : ''}
-          </div>
-        </div>
-      `;
-      col.addEventListener('click', (e) => {
-        e.stopPropagation();
-        openForecastDayPopup(forecast, d.day);
-      });
-      strip.appendChild(col);
+  const confPct = forecast.confidence != null ? Math.round(forecast.confidence * 100) + '%' : '—';
+  const strip = document.getElementById('monthStrip');
+  if (!strip) return;
+  tiles.forEach(({ d, dayTs, pct, cls, dayLabel, priceStr }) => {
+    const col = document.createElement('div');
+    col.className = 'day-col forecast-col';
+    col.dataset.ts  = String(dayTs);
+    col.dataset.day = String(d.day);
+    const shortDate = new Date(dayTs).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    col.innerHTML = `
+      <div class="day-tile forecast-tile ${cls}">
+        <div class="dt-date">D${d.day} · ${shortDate}</div>
+        <div class="dt-move">${pct >= 0 ? '+' : ''}${Number(pct).toFixed(2)}%</div>
+        <div class="dt-verdict">${confPct} CONF</div>
+        <div class="dt-fc-price">${priceStr}</div>
+      </div>
+    `;
+    col.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openForecastDayPopup(forecast, d.day);
     });
+    strip.appendChild(col);
   });
 
   // Re-align immediately in both chart modes.

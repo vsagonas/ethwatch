@@ -90,7 +90,7 @@ function injectTodayCard(strips, currency) {
 }
 
 // ── RENDER STRIP (day-cols are absolute-positioned, aligned to chart x) ──
-const STRIP_IDS = ['monthStrip', 'candleMonthStrip'];
+const STRIP_IDS = ['monthStrip'];
 function renderStrip(days, currency) {
   const strips = STRIP_IDS.map(id => document.getElementById(id)).filter(Boolean);
   if (!strips.length) return;
@@ -208,13 +208,14 @@ window.positionStripOnChart = positionStripOnChart;
 // Align the candle-chart strip via Lightweight Charts' timeToCoordinate().
 // LW Charts' time is unix seconds (not ms).
 function positionCandleStrip() {
-  const strip = document.getElementById('candleMonthStrip');
+  const strip = document.getElementById('monthStrip');
   const chart = window.lwChartApi || null;
   if (!strip || !chart || typeof chart.timeScale !== 'function') return;
   const ts = chart.timeScale();
   const stripWidth = strip.clientWidth;
   let visible = 0;
-  strip.querySelectorAll('.day-col').forEach(col => {
+  let maxX = 0; // track rightmost x to place today-col beyond last candle
+  strip.querySelectorAll('.day-col:not(.today-col)').forEach(col => {
     const ms = parseInt(col.dataset.ts);
     if (!isFinite(ms)) return;
     const x = ts.timeToCoordinate(Math.floor(ms / 1000));
@@ -223,10 +224,27 @@ function positionCandleStrip() {
     } else {
       col.style.display = '';
       col.style.left = `${x}px`;
+      if (x > maxX) maxX = x;
       visible++;
     }
   });
-  // Mirror the line-chart strip: expand to 148px + show H/L detail when zoomed in.
+  // Position today-col just after the last visible historical col.
+  const todayCol = strip.querySelector('.today-col');
+  if (todayCol) {
+    const todayMs = parseInt(todayCol.dataset.ts);
+    let todayX = isFinite(todayMs) ? ts.timeToCoordinate(Math.floor(todayMs / 1000)) : null;
+    if (todayX == null || todayX < 0 || todayX > stripWidth + 60) {
+      // Fallback: place just past the last visible historical tile
+      todayX = maxX > 0 ? maxX + 90 : null;
+    }
+    if (todayX != null && todayX >= 0 && todayX <= stripWidth + 60) {
+      todayCol.style.display = '';
+      todayCol.style.left = `${todayX}px`;
+      visible++;
+    } else {
+      todayCol.style.display = 'none';
+    }
+  }
   const expanded = visible > 0 && visible <= 14;
   strip.classList.toggle('expanded-tiles', expanded);
 }
