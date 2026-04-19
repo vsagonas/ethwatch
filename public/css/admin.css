@@ -161,6 +161,26 @@ textarea.adm-input { resize: vertical; font-family: inherit; line-height: 1.5; }
 .days-btn:hover  { border-color: var(--accent); color: var(--accent); }
 .days-btn.active { background: var(--accent); color: #0d1117; border-color: var(--accent); }
 
+/* ── COMBINED FORECAST PROGRESS MODAL ── */
+.adm-progress-backdrop {
+  position: fixed; inset: 0; z-index: 1000;
+  background: rgba(0,0,0,0.75); backdrop-filter: blur(4px);
+  display: flex; align-items: center; justify-content: center; padding: 24px;
+}
+.adm-progress-modal {
+  background: var(--card, var(--bg2)); border: 1px solid var(--border);
+  border-radius: 12px; padding: 28px 32px; width: 100%; max-width: 460px;
+}
+.apm-title { font-size: 1rem; font-weight: 700; letter-spacing: 0.5px; margin-bottom: 18px; color: var(--text); }
+.apm-bar-wrap { height: 8px; background: var(--border); border-radius: 4px; overflow: hidden; margin-bottom: 8px; }
+.apm-bar-fill { height: 100%; background: var(--accent); border-radius: 4px; transition: width 0.4s ease; }
+.apm-pct { font-size: 0.85rem; color: var(--text-dim); margin-bottom: 16px; }
+.apm-steps { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+.apm-step { font-size: 0.82rem; color: var(--text-dim); }
+.apm-step.done { color: var(--up); }
+.apm-step.err { color: var(--down); }
+.apm-result { font-size: 0.88rem; color: var(--text); padding: 10px 14px; background: rgba(88,166,255,0.08); border: 1px solid rgba(88,166,255,0.2); border-radius: 8px; margin-top: 8px; line-height: 1.6; }
+
 /* ── RESPONSIVE ──────────────────────────────────── */
 @media (max-width: 700px) {
   .adm-controls-row { grid-template-columns: 1fr; }

@@ -187,7 +187,7 @@ function gatherContext(historyDays = 90) {
   };
 }
 
-async function buildForecast({ historyDays = 90, bias = 'neutral' } = {}) {
+async function buildForecast({ historyDays = 90, bias = 'neutral', persist = true } = {}) {
   if (!process.env.ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY not configured');
 
   const context = gatherContext(historyDays);
@@ -222,24 +222,126 @@ async function buildForecast({ historyDays = 90, bias = 'neutral' } = {}) {
   forecast.history_days  = context.history_days;
   if (bias !== 'neutral') forecast.bias = bias;
 
-  // Persist to prediction history
+  // Persist to prediction history (skip when persist=false, e.g. combined sub-runs)
+  if (persist) {
+    try {
+      const targetDate = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+      dbm.savePrediction({
+        type: 'ai_forecast',
+        source_ref: forecast.pattern_match?.analog_dates ?? '7D forecast',
+        predicted_direction: forecast.direction,
+        predicted_move_pct: forecast.expected_move_pct,
+        confidence: forecast.confidence != null ? Math.round(forecast.confidence * 100) : null,
+        horizon: '7d',
+        target_date: targetDate,
+        eth_price_at_prediction: context.current_eth_price_usd,
+        narrative: forecast.narrative,
+        raw_result: forecast,
+      });
+    } catch { /* non-fatal */ }
+  }
+
+  return forecast;
+}
+
+// ── COMBINED MULTI-WINDOW FORECAST ─────────────────────────────────
+// Runs 4 independent forecasts (7d/15d/30d/60d), then asks Claude to
+// synthesise them into a single consensus forecast.
+async function buildCombinedForecast({ onProgress } = {}) {
+  if (!process.env.ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY not configured');
+
+  const windows = [7, 15, 30, 60];
+  const results = [];
+
+  for (let i = 0; i < windows.length; i++) {
+    const d = windows[i];
+    const label = `Running ${d}-day window…`;
+    const pct = Math.round(((i) / 5) * 80); // 0→80 over 4 steps
+    if (onProgress) onProgress({ step: i + 1, total: 5, label, pct });
+
+    const fc = await buildForecast({ historyDays: d, bias: 'neutral', persist: false });
+    results.push({ window: d, fc });
+  }
+
+  // Step 5 — synthesis
+  if (onProgress) onProgress({ step: 5, total: 5, label: 'Synthesizing consensus…', pct: 85 });
+
+  const compactSummaries = results.map(({ window, fc }) => ({
+    window_days: window,
+    direction: fc.direction,
+    confidence: fc.confidence,
+    expected_move_pct: fc.expected_move_pct,
+    headline: fc.headline,
+    analog_dates: fc.pattern_match?.analog_dates,
+    key_drivers: fc.key_drivers,
+    risks: fc.risks,
+    daily_breakdown: fc.daily_breakdown,
+  }));
+
+  const SYNTHESIS_SYSTEM = `You are ETHWATCH's MULTI-WINDOW CONSENSUS ENGINE. You receive 4 independent ETH 7-day forecasts each built from a different historical data window:
+- 7-day window: captures very recent momentum and short-term micro-patterns
+- 15-day window: smooths noise, shows medium-term trend continuation signals
+- 30-day window: one full month of macro context and larger swing patterns
+- 60-day window: broad macro regime — captures major structural trends
+
+SYNTHESIS RULES:
+1. If 3 or more windows agree on direction → that direction is HIGH confidence.
+2. A 2-2 split → use the macro windows (30d/60d) as the tiebreaker; reduce confidence.
+3. Weight expected_move_pct as a simple average, then adjust ±20% based on confidence of agreement.
+4. The trajectory MUST be anchored to the current ETH price from the windows' anchor_price field. Do NOT produce a monotonic line — include realistic oscillation consistent with the agreed analog.
+5. Synthesise a single realistic daily_breakdown (7 entries) that integrates the most common key events across all windows.
+6. narrative must explain the multi-window synthesis: what short windows say vs what macro windows say, and why the final call follows the consensus or macro tiebreaker.
+
+Call submit_forecast exactly once with the synthesised consensus.`;
+
+  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  const resp = await client.messages.create({
+    model: 'claude-sonnet-4-6',
+    max_tokens: 8000,
+    system: SYNTHESIS_SYSTEM,
+    tools: [FORECAST_TOOL],
+    tool_choice: { type: 'tool', name: 'submit_forecast' },
+    messages: [{
+      role: 'user',
+      content: `Here are 4 independent ETH 7-day forecasts from different data windows. Synthesise them into a single consensus forecast:\n\n${JSON.stringify(compactSummaries, null, 2)}\n\nBuild the consensus via submit_forecast. Anchor the trajectory to the current ETH price. Include realistic oscillation — not a straight line.`,
+    }],
+  });
+
+  const toolUse = resp.content?.find(c => c.type === 'tool_use' && c.name === 'submit_forecast');
+  if (!toolUse) throw new Error(`Synthesis tool skipped (stop_reason=${resp.stop_reason})`);
+
+  const synthesis = toolUse.input;
+  synthesis.model          = 'claude-sonnet-4-6';
+  synthesis.generated_ts   = Date.now();
+  synthesis.anchor_ts      = Date.now();
+  synthesis.anchor_price   = results[0]?.fc?.anchor_price ?? null;
+  synthesis.horizon        = '7d';
+  synthesis.history_days   = 60; // widest window used
+  synthesis.combined       = true;
+  synthesis.source_windows = [7, 15, 30, 60];
+
+  // Persist
   try {
     const targetDate = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
     dbm.savePrediction({
       type: 'ai_forecast',
-      source_ref: forecast.pattern_match?.analog_dates ?? '7D forecast',
-      predicted_direction: forecast.direction,
-      predicted_move_pct: forecast.expected_move_pct,
-      confidence: forecast.confidence != null ? Math.round(forecast.confidence * 100) : null,
+      source_ref: `combined:7d+15d+30d+60d`,
+      predicted_direction: synthesis.direction,
+      predicted_move_pct: synthesis.expected_move_pct,
+      confidence: synthesis.confidence != null ? Math.round(synthesis.confidence * 100) : null,
       horizon: '7d',
       target_date: targetDate,
-      eth_price_at_prediction: context.current_eth_price_usd,
-      narrative: forecast.narrative,
-      raw_result: forecast,
+      eth_price_at_prediction: synthesis.anchor_price,
+      narrative: synthesis.narrative,
+      raw_result: synthesis,
     });
   } catch { /* non-fatal */ }
 
-  return forecast;
+  // Set live cache
+  cache.data = synthesis;
+  cache.ts   = Date.now();
+
+  return synthesis;
 }
 
 async function getForecast({ force = false, historyDays = 90, bias = 'neutral' } = {}) {
@@ -259,4 +361,4 @@ async function getForecast({ force = false, historyDays = 90, bias = 'neutral' }
   return data;
 }
 
-module.exports = { getForecast, getCache: () => cache };
+module.exports = { getForecast, buildForecast, buildCombinedForecast, getCache: () => cache };

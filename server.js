@@ -1100,6 +1100,27 @@ app.post('/api/admin/run-forecast', async (req, res) => {
   }
 });
 
+// ── ADMIN: combined multi-window forecast (SSE streaming) ────────────────
+app.get('/api/admin/run-combined-forecast', async (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
+
+  const send = (obj) => res.write(`data: ${JSON.stringify(obj)}\n\n`);
+
+  try {
+    const result = await forecast.buildCombinedForecast({
+      onProgress: (p) => send(p),
+    });
+    send({ done: true, pct: 100, result });
+  } catch (err) {
+    send({ error: err.message });
+  } finally {
+    res.end();
+  }
+});
+
 // ── ADMIN: delete a forecast ──────────────────────────────────────────────
 app.delete('/api/admin/prediction/:id', (req, res) => {
   try {

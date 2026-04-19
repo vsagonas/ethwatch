@@ -370,6 +370,61 @@ async function loadPredictions() {
   }
 }
 
+// ── RUN COMBINED FORECAST ─────────────────────────────────────────
+function initRunCombined() {
+  const btn = document.getElementById('runCombinedBtn');
+  btn.addEventListener('click', () => {
+    // show modal
+    const backdrop = document.getElementById('progressBackdrop');
+    const fill = document.getElementById('apmFill');
+    const pctEl = document.getElementById('apmPct');
+    const steps = document.getElementById('apmSteps');
+    const result = document.getElementById('apmResult');
+    const closeBtn = document.getElementById('apmClose');
+
+    backdrop.style.display = 'flex';
+    fill.style.width = '0%';
+    pctEl.textContent = '0%';
+    steps.innerHTML = '';
+    result.style.display = 'none';
+    closeBtn.style.display = 'none';
+    btn.disabled = true;
+
+    const es = new EventSource('/api/admin/run-combined-forecast');
+    es.onmessage = (e) => {
+      const d = JSON.parse(e.data);
+      if (d.error) {
+        steps.innerHTML += `<div class="apm-step err">✗ ${escHtml(d.error)}</div>`;
+        closeBtn.style.display = '';
+        es.close();
+        btn.disabled = false;
+        return;
+      }
+      fill.style.width = d.pct + '%';
+      pctEl.textContent = d.pct + '%';
+      if (d.label) steps.innerHTML += `<div class="apm-step${d.done ? ' done' : ''}">${d.done ? '✓' : '…'} ${escHtml(d.label || '')}</div>`;
+      if (d.done && d.result) {
+        const r = d.result;
+        result.style.display = '';
+        result.innerHTML = `<strong>${(r.direction||'').toUpperCase()}</strong> · ${fmtPct(r.expected_move_pct)} · ${r.confidence != null ? Math.round(r.confidence*100)+'% conf' : ''}<br><span style="font-size:0.78rem;color:var(--text-dim)">${escHtml(r.headline||'')}</span>`;
+        setStatus(document.getElementById('forecastStatus'), `✓ Combined done — ${(r.direction||'').toUpperCase()} ${fmtPct(r.expected_move_pct)} · Live on Watch`, 'ok');
+        loadPredictions();
+        closeBtn.style.display = '';
+        es.close();
+        btn.disabled = false;
+      }
+    };
+    es.onerror = () => {
+      steps.innerHTML += `<div class="apm-step err">✗ Connection lost</div>`;
+      closeBtn.style.display = '';
+      es.close();
+      btn.disabled = false;
+    };
+
+    closeBtn.addEventListener('click', () => { backdrop.style.display = 'none'; }, { once: true });
+  });
+}
+
 // ── INIT ──────────────────────────────────────────────────────────
 function init() {
   initPeriodPicker();
@@ -377,6 +432,7 @@ function init() {
   initRefreshBuyAdvice();
   initRescore();
   initManualPrediction();
+  initRunCombined();
   loadStats(30);
   loadPredictions();
 }

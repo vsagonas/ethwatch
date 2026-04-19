@@ -76,7 +76,8 @@
           <button class="days-btn active" data-days="90">3 Months</button>
         </div>
 
-        <button class="adm-btn primary" id="runForecastBtn" style="margin-top:8px">▶ Run Forecast</button>
+        <button class="adm-btn primary" id="runForecastBtn" style="margin-top:8px">▶ Single Window Forecast</button>
+        <button class="adm-btn" id="runCombinedBtn" style="margin-top:6px">⊕ Combined Multi-Window</button>
         <div class="acc-status" id="forecastStatus"></div>
       </div>
 
@@ -102,7 +103,7 @@
   </section>
 
   <!-- ── MAKE NEW PREDICTION ────────────────────── -->
-  <section class="adm-section">
+  <section class="adm-section" style="display:none">
     <div class="adm-section-title">MAKE NEW PREDICTION (saves to DB + becomes active forecast on Watch/Weather)</div>
     <div class="adm-prediction-form glass">
       <div class="apf-row">
@@ -170,6 +171,18 @@
       </table>
     </div>
   </section>
+
+  <!-- ── COMBINED FORECAST PROGRESS ── -->
+  <div class="adm-progress-backdrop" id="progressBackdrop" style="display:none">
+    <div class="adm-progress-modal">
+      <div class="apm-title">Running Combined Forecast</div>
+      <div class="apm-bar-wrap"><div class="apm-bar-fill" id="apmFill" style="width:0%"></div></div>
+      <div class="apm-pct" id="apmPct">0%</div>
+      <div class="apm-steps" id="apmSteps"></div>
+      <div class="apm-result" id="apmResult" style="display:none"></div>
+      <button class="adm-btn" id="apmClose" style="display:none;margin-top:16px">Close</button>
+    </div>
+  </div>
 
 </main>
 
