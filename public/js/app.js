@@ -949,15 +949,6 @@ function setupEvents() {
     saveServerPrefs();
   });
 
-  // Export chart
-  document.getElementById('exportBtn').addEventListener('click', () => {
-    if (!priceChart) return;
-    const link = document.createElement('a');
-    link.download = `ETH_${state.currency.toUpperCase()}_${new Date().toISOString().slice(0,10)}.png`;
-    link.href = priceChart.toBase64Image();
-    link.click();
-    toast('Chart exported!', 'success');
-  });
 
   // Add alert
   document.getElementById('alertAddBtn').addEventListener('click', () => {
