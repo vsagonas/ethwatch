@@ -33,6 +33,49 @@ function fmtDayLabel(iso) {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
 }
 
+function injectTodayCard(strips, currency) {
+  const today = new Date().toISOString().slice(0, 10);
+  // Don't duplicate if API already returned today's row
+  if (monthlyCache?.days?.some(d => d.date === today)) return;
+
+  const ts  = new Date(today + 'T12:00:00Z').getTime();
+  const cur = currency || 'usd';
+  const priceObj = window.state?.currentPrice;
+  const price    = priceObj?.[cur];
+  const change   = priceObj?.[`${cur}_24h_change`];
+  const sym      = cur === 'eur' ? '€' : '$';
+
+  const moveCls = change == null ? '' : change >= 0 ? 'up' : 'down';
+  const moveStr = change == null ? '—' : `${change >= 0 ? '+' : ''}${change.toFixed(2)}%`;
+  const priceStr = price != null ? `${sym}${Math.round(price).toLocaleString()}` : '—';
+
+  const html = `
+    <div class="day-col today-col" data-date="${today}" data-ts="${ts}" style="left:-9999px">
+      <button class="day-tile today-tile" data-date="${today}" title="Today — ${today}">
+        <div class="dt-date today-label">TODAY</div>
+        <div class="dt-move ${moveCls}">${moveStr}</div>
+        <div class="dt-verdict">LIVE</div>
+        <div class="dt-extras">
+          <div class="dt-hl"><span class="dt-h">${priceStr}</span></div>
+        </div>
+      </button>
+      <div class="hope-cell pending" title="Today — live">
+        <div class="hope-graph">
+          <div class="hope-midline"></div>
+          <div class="hope-bar" style="height:0%"></div>
+        </div>
+        <div class="hope-label">live</div>
+      </div>
+    </div>
+  `;
+
+  strips.forEach(s => {
+    s.insertAdjacentHTML('beforeend', html);
+    s.querySelector('.today-col .day-tile')
+      ?.addEventListener('click', () => openDayModal(today, cur));
+  });
+}
+
 // ── RENDER STRIP (day-cols are absolute-positioned, aligned to chart x) ──
 const STRIP_IDS = ['monthStrip', 'candleMonthStrip'];
 function renderStrip(days, currency) {
@@ -94,6 +137,7 @@ function renderStrip(days, currency) {
   }).join('');
 
   strips.forEach(s => { s.innerHTML = markup; });
+  injectTodayCard(strips, currency);
   for (const s of strips) {
     s.querySelectorAll('.day-tile').forEach(tile => {
       tile.addEventListener('click', () => openDayModal(tile.dataset.date, currency));

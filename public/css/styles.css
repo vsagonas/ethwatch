@@ -921,6 +921,11 @@ canvas { display: block; width: 100% !important; }
 .day-tile.bear    { border-left: 4px solid var(--loss); }
 .day-tile.neutral { border-left: 4px solid var(--text2); }
 .day-tile.pending { border-left: 4px solid transparent; opacity: 0.75; }
+.day-tile.today-tile {
+  border-left: 4px solid var(--accent);
+  box-shadow: 0 0 0 1px var(--accent) inset;
+}
+.today-label { color: var(--accent); font-weight: 700; }
 
 .dt-date    { font-size: 0.85rem; font-weight: 600; }
 .dt-move    { font-size: 0.95rem; font-weight: 700; }
