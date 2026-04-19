@@ -59,7 +59,7 @@ function injectTodayCard(strips, currency) {
   const declineStr = decline == null ? '' : `from H ${decline >= 0 ? '+' : ''}${decline.toFixed(1)}%`;
 
   const html = `
-    <div class="day-col today-col" data-date="${today}" data-ts="${ts}" style="left:-9999px">
+    <div class="day-col today-col" data-date="${today}" data-ts="${ts}">
       <button class="day-tile today-tile" data-date="${today}" title="Today — ${today}">
         <div class="dt-date today-label">TODAY</div>
         <div class="dt-move ${moveCls}">${moveStr}</div>
@@ -89,7 +89,7 @@ function injectTodayCard(strips, currency) {
   });
 }
 
-// ── RENDER STRIP (day-cols are absolute-positioned, aligned to chart x) ──
+// ── RENDER STRIP (flex scroll row — same for line and candle) ──
 const STRIP_IDS = ['monthStrip'];
 function renderStrip(days, currency) {
   const strips = STRIP_IDS.map(id => document.getElementById(id)).filter(Boolean);
@@ -109,23 +109,18 @@ function renderStrip(days, currency) {
     const hopeDelta = hope == null ? null : (hope - 50) * 2;
     const hopeCls = hope == null ? 'pending' : hopeDelta >= 0 ? 'up' : 'down';
     const hopeBarPct = hope == null ? 0 : Math.min(100, Math.abs(hopeDelta));
-    // "Pending" is clearer than "—" for the common case of recent days
-    // that Claude hasn't rated yet (NewsAPI 24h delay + rate limits).
     const hopeStr = hope == null
       ? '…'
       : `${hopeDelta >= 0 ? '+' : ''}${Math.round(hopeDelta)}%`;
 
-    // UTC noon as the anchor — keeps each tile centered over the day's midpoint.
     const ts = new Date(d.date + 'T12:00:00Z').getTime();
 
-    // Extra detail used in expanded mode (few tiles visible): day high, low,
-    // and the % decline from intraday high to close.
     const fmtShort = v => v == null ? '—' : `$${Math.round(v).toLocaleString()}`;
     const decline = d.eth_decline_from_high_pct;
     const declineStr = decline == null ? '' : `from H ${decline >= 0 ? '+' : ''}${decline.toFixed(1)}%`;
 
     return `
-      <div class="day-col" data-date="${d.date}" data-ts="${ts}" style="left:-9999px">
+      <div class="day-col" data-date="${d.date}" data-ts="${ts}">
         <button class="day-tile ${cls}" data-date="${d.date}" title="${d.date}">
           <div class="dt-date">${fmtDayLabel(d.date)}</div>
           <div class="dt-move ${moveCls}">${fmtMove(move)}</div>
@@ -149,7 +144,10 @@ function renderStrip(days, currency) {
     `;
   }).join('');
 
-  strips.forEach(s => { s.innerHTML = markup; });
+  strips.forEach(s => {
+    s.innerHTML = markup;
+    s.classList.add('expanded-tiles');
+  });
   injectTodayCard(strips, currency);
   for (const s of strips) {
     s.querySelectorAll('.day-tile').forEach(tile => {
@@ -163,115 +161,36 @@ function renderStrip(days, currency) {
     });
   }
 
-  // Align both strips against their respective chart's x-scale.
-  window.positionStripOnChart?.();
-  window.positionCandleStrip?.();
-
-  // Re-inject forecast day tiles if a forecast overlay is active —
-  // renderStrip wiped the DOM with innerHTML so tiles need to come back.
+  // Re-inject forecast day tiles after strip rebuild.
   if (window.activePrediction) {
     window.renderForecastDayCards?.(window.activePrediction);
   }
+
+  // Scroll strip to show TODAY card.
+  scrollStripToToday();
 }
 
-// Align every day-col to the current price-chart x-scale. Also flips the
-// strip between `compact` and `expanded` modes based on how many tiles
-// are currently visible — fewer tiles means more room per tile, so we
-// surface intraday high, low, and decline-from-high.
-function positionStripOnChart(chart) {
-  chart = chart || window.priceChart || null;
-  if (!chart) chart = (typeof priceChart !== 'undefined' ? priceChart : null);
+// Scroll the strip so TODAY card is near the right side of the visible area.
+// Forecast tiles come after today (to the right), scrollable on demand.
+function scrollStripToToday() {
   const strip = document.getElementById('monthStrip');
-  if (!strip || !chart?.scales?.x) return;
-  const xScale = chart.scales.x;
-
-  const cols = strip.querySelectorAll('.day-col');
-  let visible = 0;
-  cols.forEach(col => {
-    const ts = parseInt(col.dataset.ts);
-    if (!isFinite(ts)) return;
-    const x = xScale.getPixelForValue(ts);
-    if (!isFinite(x) || x < xScale.left - 60 || x > xScale.right + 60) {
-      col.style.display = 'none';
-    } else {
-      col.style.display = '';
-      col.style.left = `${x}px`;
-      visible++;
-    }
-  });
-  // ≤ 14 tiles visible (about 2 weeks) → expanded detail; otherwise compact.
-  const expanded = visible > 0 && visible <= 14;
-  strip.classList.toggle('expanded-tiles', expanded);
-}
-window.positionStripOnChart = positionStripOnChart;
-
-// Align the candle-chart strip via Lightweight Charts' timeToCoordinate().
-// LW Charts' time is unix seconds (not ms).
-function positionCandleStrip() {
-  const strip = document.getElementById('monthStrip');
-  const chart = window.lwChartApi || null;
-  if (!strip || !chart || typeof chart.timeScale !== 'function') return;
-  const ts = chart.timeScale();
-  const stripWidth = strip.clientWidth;
-  let visible = 0;
-  let maxHistX = 0; // rightmost x among HISTORICAL tiles only (not forecast, not today)
-  // Position historical cols first, tracking their max x for today fallback.
-  strip.querySelectorAll('.day-col:not(.today-col):not(.forecast-col)').forEach(col => {
-    const ms = parseInt(col.dataset.ts);
-    if (!isFinite(ms)) return;
-    const x = ts.timeToCoordinate(Math.floor(ms / 1000));
-    if (x == null || x < -60 || x > stripWidth + 60) {
-      col.style.display = 'none';
-    } else {
-      col.style.display = '';
-      col.style.left = `${x}px`;
-      if (x > maxHistX) maxHistX = x;
-      visible++;
-    }
-  });
-  // Position today-col at the correct Apr 19 x: use timeToCoordinate first,
-  // then fall back to last-candle-pos + one-day-width computed from visible cols.
+  if (!strip) return;
   const todayCol = strip.querySelector('.today-col');
   if (todayCol) {
-    const todayMs = parseInt(todayCol.dataset.ts);
-    let todayX = isFinite(todayMs) ? ts.timeToCoordinate(Math.floor(todayMs / 1000)) : null;
-    if (todayX == null || todayX < 0 || todayX > stripWidth + 60) {
-      // Compute one-day-width from the spacing between the last two visible historical tiles.
-      const visibleHistCols = [...strip.querySelectorAll('.day-col:not(.today-col):not(.forecast-col)')]
-        .filter(c => c.style.display !== 'none')
-        .sort((a, b) => parseInt(a.dataset.ts) - parseInt(b.dataset.ts));
-      if (visibleHistCols.length >= 2) {
-        const lastX = parseFloat(visibleHistCols[visibleHistCols.length - 1].style.left);
-        const prevX = parseFloat(visibleHistCols[visibleHistCols.length - 2].style.left);
-        todayX = lastX + (lastX - prevX); // one day beyond last candle
-      } else if (visibleHistCols.length === 1) {
-        todayX = parseFloat(visibleHistCols[0].style.left) + 82;
-      }
-    }
-    if (todayX != null && todayX >= 0 && todayX <= stripWidth + 60) {
-      todayCol.style.display = '';
-      todayCol.style.left = `${todayX}px`;
-      visible++;
-    } else {
-      todayCol.style.display = 'none';
-    }
+    // Place today 2 cards from the right edge so the user can see what's just before.
+    const cardWidth = (todayCol.offsetWidth || 106) + 6;
+    strip.scrollLeft = Math.max(0, todayCol.offsetLeft - strip.clientWidth + cardWidth * 2);
+  } else {
+    // No today card — scroll to the end to show most recent history.
+    strip.scrollLeft = strip.scrollWidth;
   }
-  // Position forecast cols normally via their timestamps.
-  strip.querySelectorAll('.forecast-col').forEach(col => {
-    const ms = parseInt(col.dataset.ts);
-    if (!isFinite(ms)) return;
-    const x = ts.timeToCoordinate(Math.floor(ms / 1000));
-    if (x == null || x < -60 || x > stripWidth + 60) {
-      col.style.display = 'none';
-    } else {
-      col.style.display = '';
-      col.style.left = `${x}px`;
-      visible++;
-    }
-  });
-  const expanded = visible > 0 && visible <= 14;
-  strip.classList.toggle('expanded-tiles', expanded);
 }
+window.scrollStripToToday = scrollStripToToday;
+
+// These are now no-ops kept for backward compat with all callers in app.js / candlestick.js.
+function positionStripOnChart() {}
+function positionCandleStrip() {}
+window.positionStripOnChart = positionStripOnChart;
 window.positionCandleStrip = positionCandleStrip;
 
 // ── LOAD MONTHLY ──────────────────────────────────────────────
@@ -518,6 +437,34 @@ async function rescoreMonth() {
   }
 }
 
+function initStripPanButtons() {
+  const strip = document.getElementById('monthStrip');
+  if (!strip) return;
+  const parent = strip.parentElement;
+  if (!parent || parent.querySelector('.strip-pan-wrap')) return; // already done
+
+  // Wrap strip in a relative div so absolute buttons don't depend on parent
+  const wrap = document.createElement('div');
+  wrap.className = 'strip-pan-wrap';
+  parent.insertBefore(wrap, strip);
+  wrap.appendChild(strip);
+
+  const leftBtn = document.createElement('button');
+  leftBtn.className = 'strip-pan-btn pan-left';
+  leftBtn.textContent = '‹';
+  leftBtn.title = 'Scroll left';
+  leftBtn.addEventListener('click', () => { strip.scrollLeft -= 300; });
+
+  const rightBtn = document.createElement('button');
+  rightBtn.className = 'strip-pan-btn pan-right';
+  rightBtn.textContent = '›';
+  rightBtn.title = 'Scroll right';
+  rightBtn.addEventListener('click', () => { strip.scrollLeft += 300; });
+
+  wrap.appendChild(leftBtn);
+  wrap.appendChild(rightBtn);
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   // Initial state: 7D default, so hidden. React to range/currency clicks.
   document.querySelectorAll('.range-btn').forEach(btn => {
@@ -530,4 +477,5 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   document.getElementById('rescoreBtn')?.addEventListener('click', rescoreMonth);
   setTimeout(toggleMonthlyVisibility, 500);
+  initStripPanButtons();
 });

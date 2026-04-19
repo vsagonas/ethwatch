@@ -243,9 +243,8 @@ function renderForecastDayCards(forecast) {
     strip.appendChild(col);
   });
 
-  // Re-align immediately in both chart modes.
-  window.positionStripOnChart?.();
-  window.positionCandleStrip?.();
+  // Scroll to today so forecast tiles are visible to the right.
+  window.scrollStripToToday?.();
 }
 // Expose so monthly.js can re-inject after renderStrip rebuilds the DOM.
 window.renderForecastDayCards = renderForecastDayCards;
