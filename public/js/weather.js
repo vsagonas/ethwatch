@@ -374,8 +374,78 @@ function initCurrencyToggle() {
   });
 }
 
+// ── CHIP INFO MODAL ───────────────────────────────────────────────
+const chipExplainCache = {}; // key -> text (session cache)
+
+const CHIP_LABELS = {
+  rsi:       { name: 'Temperature (RSI-14)',      icon: '🌡️', valId: 'vtRsi',    descId: 'vtRsiDesc' },
+  volume:    { name: 'Humidity (24h Volume)',      icon: '💧', valId: 'vtVol',    descId: 'vtVolDesc' },
+  funding:   { name: 'Wind (Funding Rate)',        icon: '🌬️', valId: 'vtFunding',descId: 'vtFundingDesc' },
+  btcdom:    { name: 'Pressure (BTC Dominance)',   icon: '🧭', valId: 'vtBtcDom', descId: 'vtBtcDomDesc' },
+  feargreed: { name: 'Lightning (Fear & Greed)',   icon: '⚡', valId: 'vtFg',     descId: 'vtFgDesc' },
+  oi:        { name: 'Tide (Open Interest)',        icon: '🌊', valId: 'vtOi',     descId: 'vtOiDesc' },
+  bbwidth:   { name: 'Visibility (BB Width)',       icon: '🌫️', valId: 'vtBb',     descId: 'vtBbDesc' },
+  gas:       { name: 'Gas (Network Fee)',           icon: '⛽', valId: 'vtGas',    descId: 'vtGasDesc' },
+  mktcap:    { name: 'Market Cap',                 icon: '💰', valId: 'mktCap',   descId: null },
+  vol24h:    { name: '24h Volume',                 icon: '📊', valId: 'vol24h',   descId: null },
+  change7d:  { name: '7-Day Change',               icon: '📈', valId: 'change7d', descId: null },
+  change30d: { name: '30-Day Change',              icon: '📅', valId: 'change30d',descId: null },
+  ath:       { name: 'All-Time High',              icon: '🏔️', valId: 'ath',      descId: null },
+  rank:      { name: 'Market Cap Rank',            icon: '🏅', valId: 'rank',     descId: null },
+};
+
+async function openChipInfo(key) {
+  const meta  = CHIP_LABELS[key];
+  if (!meta) return;
+  const value = document.getElementById(meta.valId)?.textContent || '—';
+  const desc  = meta.descId ? document.getElementById(meta.descId)?.textContent : '';
+
+  document.getElementById('ciIcon').textContent  = meta.icon;
+  document.getElementById('ciName').textContent  = meta.name;
+  document.getElementById('ciValue').textContent = value;
+  document.getElementById('ciBody').innerHTML    = '<span class="ci-loading">Fetching explanation…</span>';
+  document.getElementById('chipInfoModal').style.display = 'flex';
+
+  if (chipExplainCache[key]) {
+    document.getElementById('ciBody').innerHTML = `<div class="ci-explain">${escHtml(chipExplainCache[key])}</div>`;
+    return;
+  }
+  try {
+    const res  = await fetch('/api/weather/chip-explain', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key, value, desc }),
+    }).then(r => r.json());
+    if (res.success) {
+      chipExplainCache[key] = res.text;
+      document.getElementById('ciBody').innerHTML = `<div class="ci-explain">${escHtml(res.text)}</div>`;
+    } else {
+      document.getElementById('ciBody').textContent = 'Could not load explanation.';
+    }
+  } catch {
+    document.getElementById('ciBody').textContent = 'Could not load explanation.';
+  }
+}
+
+function initChipClicks() {
+  document.querySelectorAll('[data-vital-key]').forEach(el => {
+    el.addEventListener('click', () => openChipInfo(el.dataset.vitalKey));
+  });
+  document.querySelectorAll('[data-stat-key]').forEach(el => {
+    el.addEventListener('click', () => openChipInfo(el.dataset.statKey));
+  });
+}
+
 // ── MODALS ────────────────────────────────────────────────────────
 function initModals() {
+  document.getElementById('chipInfoClose').addEventListener('click', () => {
+    document.getElementById('chipInfoModal').style.display = 'none';
+  });
+  document.getElementById('chipInfoModal').addEventListener('click', e => {
+    if (e.target === document.getElementById('chipInfoModal'))
+      document.getElementById('chipInfoModal').style.display = 'none';
+  });
+
   document.getElementById('fcDayModalClose').addEventListener('click', () => {
     document.getElementById('fcDayModal').style.display = 'none';
   });
@@ -403,6 +473,7 @@ async function init() {
   buildRain();
   initCurrencyToggle();
   initModals();
+  initChipClicks();
 
   await fetchAll();
   await renderCurrent();

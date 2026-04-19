@@ -45,27 +45,27 @@
       <div class="wx-change" id="change24h">— 24h</div>
     </div>
     <div class="wx-stats-grid">
-      <div class="wx-stat">
+      <div class="wx-stat wx-chip-btn" data-stat-key="mktcap">
         <div class="wx-stat-label">MARKET CAP</div>
         <div class="wx-stat-val" id="mktCap">—</div>
       </div>
-      <div class="wx-stat">
+      <div class="wx-stat wx-chip-btn" data-stat-key="vol24h">
         <div class="wx-stat-label">24H VOLUME</div>
         <div class="wx-stat-val" id="vol24h">—</div>
       </div>
-      <div class="wx-stat">
+      <div class="wx-stat wx-chip-btn" data-stat-key="change7d">
         <div class="wx-stat-label">7D CHANGE</div>
         <div class="wx-stat-val" id="change7d">—</div>
       </div>
-      <div class="wx-stat">
+      <div class="wx-stat wx-chip-btn" data-stat-key="change30d">
         <div class="wx-stat-label">30D CHANGE</div>
         <div class="wx-stat-val" id="change30d">—</div>
       </div>
-      <div class="wx-stat">
+      <div class="wx-stat wx-chip-btn" data-stat-key="ath">
         <div class="wx-stat-label">ALL TIME HIGH</div>
         <div class="wx-stat-val" id="ath">—</div>
       </div>
-      <div class="wx-stat">
+      <div class="wx-stat wx-chip-btn" data-stat-key="rank">
         <div class="wx-stat-label">RANK</div>
         <div class="wx-stat-val" id="rank">—</div>
       </div>
@@ -76,7 +76,6 @@
 <!-- ── FORECAST BANNER ────────────────────────────────── -->
 <section class="wx-section">
   <div class="wx-section-header">
-    <span class="wx-section-icon">🔮</span>
     <span class="wx-section-title">7-DAY FORECAST</span>
   </div>
   <div class="wx-forecast-strip" id="forecastStrip">
@@ -101,49 +100,49 @@
     <span class="wx-section-title">WEATHER VITALS</span>
   </div>
   <div class="wx-vitals-grid" id="vitalsGrid">
-    <div class="wx-vital glass">
+    <div class="wx-vital glass wx-chip-btn" data-vital-key="rsi">
       <div class="vt-icon">🌡️</div>
       <div class="vt-name">TEMPERATURE (RSI)</div>
       <div class="vt-val" id="vtRsi">—</div>
       <div class="vt-desc" id="vtRsiDesc">—</div>
     </div>
-    <div class="wx-vital glass">
+    <div class="wx-vital glass wx-chip-btn" data-vital-key="volume">
       <div class="vt-icon">💧</div>
       <div class="vt-name">HUMIDITY (VOLUME)</div>
       <div class="vt-val" id="vtVol">—</div>
       <div class="vt-desc" id="vtVolDesc">—</div>
     </div>
-    <div class="wx-vital glass">
+    <div class="wx-vital glass wx-chip-btn" data-vital-key="funding">
       <div class="vt-icon">🌬️</div>
       <div class="vt-name">WIND (FUNDING RATE)</div>
       <div class="vt-val" id="vtFunding">—</div>
       <div class="vt-desc" id="vtFundingDesc">—</div>
     </div>
-    <div class="wx-vital glass">
+    <div class="wx-vital glass wx-chip-btn" data-vital-key="btcdom">
       <div class="vt-icon">🧭</div>
       <div class="vt-name">PRESSURE (BTC DOM)</div>
       <div class="vt-val" id="vtBtcDom">—</div>
       <div class="vt-desc" id="vtBtcDomDesc">—</div>
     </div>
-    <div class="wx-vital glass">
+    <div class="wx-vital glass wx-chip-btn" data-vital-key="feargreed">
       <div class="vt-icon">⚡</div>
       <div class="vt-name">LIGHTNING (FEAR &amp; GREED)</div>
       <div class="vt-val" id="vtFg">—</div>
       <div class="vt-desc" id="vtFgDesc">—</div>
     </div>
-    <div class="wx-vital glass">
+    <div class="wx-vital glass wx-chip-btn" data-vital-key="oi">
       <div class="vt-icon">🌊</div>
       <div class="vt-name">TIDE (OPEN INTEREST)</div>
       <div class="vt-val" id="vtOi">—</div>
       <div class="vt-desc" id="vtOiDesc">—</div>
     </div>
-    <div class="wx-vital glass">
+    <div class="wx-vital glass wx-chip-btn" data-vital-key="bbwidth">
       <div class="vt-icon">🌫️</div>
       <div class="vt-name">VISIBILITY (BB WIDTH)</div>
       <div class="vt-val" id="vtBb">—</div>
       <div class="vt-desc" id="vtBbDesc">—</div>
     </div>
-    <div class="wx-vital glass">
+    <div class="wx-vital glass wx-chip-btn" data-vital-key="gas">
       <div class="vt-icon">⛽</div>
       <div class="vt-name">GAS (NETWORK FEE)</div>
       <div class="vt-val" id="vtGas">—</div>
@@ -157,13 +156,28 @@
   <div class="wx-modal glass">
     <button class="wx-modal-close" id="fcDayModalClose">✕</button>
     <div class="wx-modal-header">
-      <span class="wm-icon" id="fcdIcon">🔮</span>
+      <span class="wm-icon" id="fcdIcon">⛅</span>
       <div>
         <div class="wm-date" id="fcdDate">—</div>
         <div class="wm-condition" id="fcdCondition">FORECAST</div>
       </div>
     </div>
     <div class="wx-modal-body" id="fcdBody">—</div>
+  </div>
+</div>
+
+<!-- ── CHIP INFO MODAL ────────────────────────────────── -->
+<div class="wx-modal-backdrop" id="chipInfoModal" style="display:none">
+  <div class="wx-modal glass">
+    <button class="wx-modal-close" id="chipInfoClose">✕</button>
+    <div class="wx-modal-header">
+      <span class="wm-icon" id="ciIcon">—</span>
+      <div>
+        <div class="wm-date" id="ciName">—</div>
+        <div class="wm-condition" id="ciValue">—</div>
+      </div>
+    </div>
+    <div class="wx-modal-body" id="ciBody">Loading…</div>
   </div>
 </div>
 

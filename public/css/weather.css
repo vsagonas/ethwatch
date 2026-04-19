@@ -143,6 +143,12 @@ body > *:not(.sky) { position: relative; z-index: 1; }
 .wx-stat-label { font-size: 0.6rem; letter-spacing: 1.5px; text-transform: uppercase; color: var(--text-dim); margin-bottom: 4px; }
 .wx-stat-val { font-size: 0.95rem; font-weight: 700; color: var(--text); }
 
+.wx-chip-btn { cursor: pointer; transition: border-color 0.15s, box-shadow 0.15s; }
+.wx-chip-btn:hover { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+
+.ci-explain { font-size: 0.92rem; color: var(--text); line-height: 1.75; }
+.ci-loading { color: var(--text-dim); font-style: italic; }
+
 /* ── SECTIONS ────────────────────────────────────── */
 .wx-section { max-width: 1100px; margin: 32px auto; padding: 0 24px; }
 .wx-section-header { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }

@@ -398,6 +398,69 @@ app.get('/api/eth-info', async (req, res) => {
   }
 });
 
+// ── Weather chip explanations (AI, cached per key) ─────────────────────────
+const CHIP_META = {
+  rsi:       { name: 'Temperature (RSI-14)', icon: '🌡️', what: 'RSI-14 (Relative Strength Index) — a momentum oscillator from 0–100 measuring whether ETH is overbought or oversold based on recent price moves.' },
+  volume:    { name: 'Humidity (24h Volume)', icon: '💧', what: '24-hour trading volume across all exchanges — a measure of market participation and conviction behind price moves.' },
+  funding:   { name: 'Wind (Funding Rate)', icon: '🌬️', what: 'Perpetual futures funding rate — the periodic payment between longs and shorts that keeps the futures price anchored to spot. Positive = longs pay shorts (bullish bias). Negative = shorts pay longs (bearish bias).' },
+  btcdom:    { name: 'Pressure (BTC Dominance)', icon: '🧭', what: "Bitcoin's share of total crypto market cap. High dominance means capital is concentrated in BTC; low dominance signals altcoin season where ETH and others often outperform." },
+  feargreed: { name: 'Lightning (Fear & Greed)', icon: '⚡', what: 'Crypto Fear & Greed Index (0–100) from Alternative.me — composite of volatility, momentum, social media, dominance, and trends. Extreme fear often signals buying opportunities; extreme greed signals caution.' },
+  oi:        { name: 'Tide (Open Interest)', icon: '🌊', what: 'Total value of all open ETH perpetual futures contracts — measures leveraged exposure in the market. Rising OI with rising price = strong trend. Rising OI with falling price = potential short squeeze.' },
+  bbwidth:   { name: 'Visibility (BB Width)', icon: '🌫️', what: 'Bollinger Band Width % — the spread between upper and lower Bollinger Bands relative to the middle band. Low width = price coiling (volatility squeeze, breakout incoming). High width = volatility expanding.' },
+  gas:       { name: 'Gas (Network Fee)', icon: '⛽', what: 'Current Ethereum network base gas price in Gwei. High gas = network congestion from heavy DeFi/NFT activity. Low gas = quiet network. Also affects the cost of on-chain transactions.' },
+  mktcap:    { name: 'Market Cap', icon: '💰', what: "ETH's total market capitalisation: current price × circulating supply. A proxy for the network's overall economic weight and investor confidence." },
+  vol24h:    { name: '24h Volume', icon: '📊', what: 'Total USD value of ETH traded across all exchanges in the last 24 hours. High relative to market cap signals strong interest; low signals thin, potentially manipulated moves.' },
+  change7d:  { name: '7-Day Change', icon: '📈', what: "ETH's price change over the last 7 days. A weekly perspective that smooths out daily noise and shows the dominant short-term trend." },
+  change30d: { name: '30-Day Change', icon: '📅', what: "ETH's price change over the last 30 days — a monthly view that captures macro momentum and whether ETH is in a sustained uptrend or downtrend." },
+  ath:       { name: 'All-Time High', icon: '🏔️', what: "ETH's highest ever recorded price. Comparing the current price to the ATH shows how far below peak valuation the market sits — relevant for long-term perspective and cycle analysis." },
+  rank:      { name: 'Market Cap Rank', icon: '🏅', what: "ETH's rank among all cryptocurrencies by market capitalisation. Rank #1 is Bitcoin. ETH is persistently #2, but this can change during strong altcoin cycles." },
+};
+const vitalExplainCache = new Map(); // key -> { text, ts }
+const VITAL_EXPLAIN_TTL = 4 * 60 * 60 * 1000; // 4 hours
+
+app.post('/api/weather/chip-explain', async (req, res) => {
+  const { key, value, desc } = req.body || {};
+  if (!key || !CHIP_META[key]) return res.status(400).json({ success: false, error: 'unknown key' });
+
+  const cached = vitalExplainCache.get(key);
+  if (cached && Date.now() - cached.ts < VITAL_EXPLAIN_TTL) {
+    return res.json({ success: true, text: cached.text, icon: CHIP_META[key].icon, name: CHIP_META[key].name, cached: true });
+  }
+
+  const meta = CHIP_META[key];
+  if (!process.env.ANTHROPIC_API_KEY) {
+    const text = `${meta.what} Current reading: ${value || '—'} — ${desc || ''}.`;
+    return res.json({ success: true, text, icon: meta.icon, name: meta.name });
+  }
+
+  try {
+    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    const msg = await client.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 160,
+      messages: [{
+        role: 'user',
+        content: `You explain crypto metrics on ETHWEATHER, a weather-themed Ethereum tracker where market data maps to weather phenomena.
+
+Metric: ${meta.name}
+What it measures: ${meta.what}
+Current value: ${value || '—'}
+Current status: ${desc || '—'}
+
+Write 2–3 clear sentences: what this metric is, and what today's reading specifically signals for ETH right now. Plain text, no markdown, no bullet points. Be direct and useful.`,
+      }],
+    });
+    const text = msg.content[0]?.text?.trim() || meta.what;
+    vitalExplainCache.set(key, { text, ts: Date.now() });
+    res.json({ success: true, text, icon: meta.icon, name: meta.name });
+  } catch (err) {
+    console.error('chip-explain error:', err.message);
+    const text = `${meta.what} Current reading: ${value || '—'}.`;
+    vitalExplainCache.set(key, { text, ts: Date.now() }); // cache fallback too
+    res.json({ success: true, text, icon: meta.icon, name: meta.name, fallback: true });
+  }
+});
+
 // ── OHLC (Candlestick data) ─────────────────────────────────────────────────
 const ohlcCache = {};
 const CACHE_TTL_OHLC = 60000;
