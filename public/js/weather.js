@@ -405,7 +405,7 @@ async function init() {
   initModals();
 
   await fetchAll();
-  renderCurrent();
+  await renderCurrent();
   renderVitals();
 
   fetchForecast();

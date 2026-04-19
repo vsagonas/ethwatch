@@ -348,7 +348,13 @@ app.get('/api/patterns', async (req, res) => {
   }
 });
 
+let infoCache = { data: null, ts: 0 };
+const INFO_TTL = 5 * 60 * 1000;
+
 app.get('/api/eth-info', async (req, res) => {
+  if (infoCache.data && Date.now() - infoCache.ts < INFO_TTL) {
+    return res.json({ success: true, data: infoCache.data, serverTs: Date.now(), cached: true });
+  }
   try {
     const data = await cgGet('/coins/ethereum', {
       localization: false,
@@ -358,34 +364,36 @@ app.get('/api/eth-info', async (req, res) => {
       developer_data: false,
     });
     const market = data.market_data;
-    res.json({
-      success: true,
-      data: {
-        name: data.name,
-        symbol: data.symbol.toUpperCase(),
-        image: data.image?.small,
-        rank: data.market_cap_rank,
-        usd: {
-          price: market.current_price?.usd,
-          ath: market.ath?.usd,
-          atl: market.atl?.usd,
-          change7d: market.price_change_percentage_7d,
-          change30d: market.price_change_percentage_30d,
-          change1y: market.price_change_percentage_1y,
-        },
-        eur: {
-          price: market.current_price?.eur,
-          ath: market.ath?.eur,
-          atl: market.atl?.eur,
-        },
-        marketCap: { usd: market.market_cap?.usd, eur: market.market_cap?.eur },
-        circulatingSupply: market.circulating_supply,
-        totalSupply: market.total_supply,
+    const payload = {
+      name: data.name,
+      symbol: data.symbol.toUpperCase(),
+      image: data.image?.small,
+      rank: data.market_cap_rank,
+      usd: {
+        price: market.current_price?.usd,
+        ath: market.ath?.usd,
+        atl: market.atl?.usd,
+        change7d: market.price_change_percentage_7d,
+        change30d: market.price_change_percentage_30d,
+        change1y: market.price_change_percentage_1y,
       },
-      serverTs: Date.now(),
-    });
+      eur: {
+        price: market.current_price?.eur,
+        ath: market.ath?.eur,
+        atl: market.atl?.eur,
+      },
+      marketCap: { usd: market.market_cap?.usd, eur: market.market_cap?.eur },
+      circulatingSupply: market.circulating_supply,
+      totalSupply: market.total_supply,
+    };
+    infoCache = { data: payload, ts: Date.now() };
+    res.json({ success: true, data: payload, serverTs: Date.now() });
   } catch (err) {
     console.error('Info fetch error:', err.message);
+    // Serve stale cache rather than a blank response
+    if (infoCache.data) {
+      return res.json({ success: true, data: infoCache.data, serverTs: Date.now(), stale: true });
+    }
     res.status(502).json({ success: false, error: 'Failed to fetch ETH info', detail: err.message });
   }
 });
