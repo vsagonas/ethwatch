@@ -508,6 +508,18 @@ function buildPriceChart(histJson) {
       const hoverTs = priceChart.scales.x.getValueForPixel(e.clientX - rect.left);
       if (isFinite(hoverTs)) window.highlightDayCardByTs?.(hoverTs);
     });
+
+    // Two-finger trackpad / horizontal wheel → pan x-axis. Chart.js's pan
+    // plugin only reacts to drag gestures, not wheel, so we bridge it
+    // manually. Both deltaX (horizontal scroll) and deltaY (vertical scroll
+    // when shift-held) pan horizontally. afterRender then re-syncs the strip.
+    canvas.addEventListener('wheel', (e) => {
+      if (!priceChart?.pan) return;
+      const dx = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : (e.shiftKey ? e.deltaY : 0);
+      if (!dx) return;
+      e.preventDefault();
+      try { priceChart.pan({ x: -dx }, undefined, 'default'); } catch {}
+    }, { passive: false });
   }
 
   window.priceChart = priceChart;

@@ -79,7 +79,7 @@ function initCandlestickChart(ohlcData) {
     timeScale: { borderColor: border, timeVisible: true },
     // Zoom gestures OFF (user can't zoom). Pan stays on.
     handleScroll: {
-      mouseWheel: false,
+      mouseWheel: true,          // trackpad/wheel → horizontal pan
       pressedMouseMove: true,
       horzTouchDrag: true,
       vertTouchDrag: false,
@@ -280,6 +280,10 @@ function initCandlestickChart(ohlcData) {
   }, { passive: false });
 
   lwChart.timeScale().subscribeVisibleTimeRangeChange(() => window.positionCandleStrip?.());
+  // Logical range fires more continuously during an active pan gesture,
+  // keeping day cards glued to the chart frame-by-frame (not just at the
+  // end of the pan).
+  lwChart.timeScale().subscribeVisibleLogicalRangeChange?.(() => window.positionCandleStrip?.());
   // First alignment (and make sure monthly data is loaded for this strip too).
   window.positionCandleStrip?.();
   window.loadMonthly?.(document.querySelector('.currency-btn.active')?.dataset.currency || 'usd');
