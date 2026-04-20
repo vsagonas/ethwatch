@@ -1,7 +1,10 @@
 'use strict';
 
 const Anthropic = require('@anthropic-ai/sdk');
+const crypto = require('crypto');
 const dbm = require('../db');
+
+const promptHash = (s) => crypto.createHash('sha256').update(s).digest('hex').slice(0, 10);
 
 const SYSTEM_PROMPT = `You are the ORACLE — a crypto market foresight engine. The user hands you a saved "marker set": a named collection of candles they think form a repeatable pattern, along with their own hypothesis about what should happen next.
 
@@ -138,6 +141,11 @@ async function runOracle(setId) {
   prophecy.generated_ts = Date.now();
   prophecy.anchor_price = currentPrice;
   prophecy.anchor_ts = Date.now();
+  prophecy.prompt = {
+    kind: 'oracle',
+    system: SYSTEM_PROMPT,
+    prompt_hash: promptHash(SYSTEM_PROMPT),
+  };
 
   dbm.saveOracleResult(setId, prophecy);
 

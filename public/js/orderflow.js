@@ -30,6 +30,12 @@ function fmtPriceOF(usdPrice) {
 // Remember the last trades in USD so we can repaint them when the currency changes.
 let lastBuyUsd = null;
 let lastSellUsd = null;
+// Track the wall-clock timestamp (ms since epoch) of the most recent trade we
+// actually used for each chip. Lets the 5s server-refresh overwrite a stale
+// chip when the WS has silently lagged or dropped.
+let lastShownBuyTs  = 0;
+let lastShownSellTs = 0;
+let lastWsMsgTs     = 0;
 
 // ── STATUS ─────────────────────────────────────────────────
 function setOFStatus(status) {
@@ -122,11 +128,17 @@ async function refreshTrendFromServer() {
     windowsCache = json.windows || {};
     renderActiveWindow();
 
-    // Only seed the chips from cache if no live trade has set them yet.
-    if (json.last_buy  && document.getElementById('lastBuyPrice')?.textContent === '—')
-      addRow('buyFeed',  json.last_buy.price,  json.last_buy.qty);
-    if (json.last_sell && document.getElementById('lastSellPrice')?.textContent === '—')
-      addRow('sellFeed', json.last_sell.price, json.last_sell.qty);
+    // Overwrite whichever chip has an older timestamp than the server does.
+    // The server keeps its own independent Binance WS → SQLite pipeline, so
+    // when our in-page WS silently lags, the server is still current.
+    const srvBuy  = json.last_buy;
+    const srvSell = json.last_sell;
+    if (srvBuy && typeof srvBuy.ts === 'number' && srvBuy.ts > lastShownBuyTs) {
+      addRow('buyFeed',  srvBuy.price,  srvBuy.qty,  srvBuy.ts);
+    }
+    if (srvSell && typeof srvSell.ts === 'number' && srvSell.ts > lastShownSellTs) {
+      addRow('sellFeed', srvSell.price, srvSell.qty, srvSell.ts);
+    }
   } catch {
     const { buy_vol, sell_vol } = computeLocalTrend();
     windowsCache = { '5m': { buy_vol, sell_vol } };
@@ -135,10 +147,16 @@ async function refreshTrendFromServer() {
 }
 
 // ── FEED ROWS (legacy — now writes to the compact chips) ─────────────
-function addRow(feedId, priceUsd, qty /* , isBig */) {
+function addRow(feedId, priceUsd, qty, tradeTs /* ms since epoch — optional */) {
   const isBuy = feedId === 'buyFeed';
-  if (isBuy) lastBuyUsd  = { price: priceUsd, qty };
-  else       lastSellUsd = { price: priceUsd, qty };
+  const ts    = typeof tradeTs === 'number' ? tradeTs : Date.now();
+  // Ignore updates older than what's already shown (can arrive from a stale
+  // server refresh racing a newer WS trade).
+  if (isBuy  && ts < lastShownBuyTs)  return;
+  if (!isBuy && ts < lastShownSellTs) return;
+
+  if (isBuy) { lastBuyUsd  = { price: priceUsd, qty }; lastShownBuyTs  = ts; }
+  else       { lastSellUsd = { price: priceUsd, qty }; lastShownSellTs = ts; }
 
   const priceEl = document.getElementById(isBuy ? 'lastBuyPrice' : 'lastSellPrice');
   const qtyEl   = document.getElementById(isBuy ? 'lastBuyQty'   : 'lastSellQty');
@@ -204,15 +222,15 @@ function connectOrderFlow() {
     const price  = parseFloat(t.p);
     const qty    = parseFloat(t.q);
     const isSell = t.m; // buyer is maker → sell pressure
-    const now    = Date.now();
-    const isBig  = qty >= 5;
+    const tradeTs = typeof t.T === 'number' ? t.T : Date.now();
+    lastWsMsgTs   = Date.now();
 
     if (isSell) {
-      sells.push({ price, qty, time: now });
-      addRow('sellFeed', price, qty, isBig);
+      sells.push({ price, qty, time: tradeTs });
+      addRow('sellFeed', price, qty, tradeTs);
     } else {
-      buys.push({ price, qty, time: now });
-      addRow('buyFeed', price, qty, isBig);
+      buys.push({ price, qty, time: tradeTs });
+      addRow('buyFeed', price, qty, tradeTs);
     }
   };
 
@@ -230,6 +248,16 @@ function connectOrderFlow() {
 // what this browser has seen since it connected.
 setInterval(refreshTrendFromServer, 5000);
 setInterval(updateRates, 1000);
+// Watchdog: ETHUSDT fires many aggTrades per second. If we go > 30s without a
+// single message, the socket has silently hung — force a reconnect so chips
+// don't freeze at an old price while the rest of the page updates.
+setInterval(() => {
+  if (!lastWsMsgTs) return; // haven't received a first trade yet — normal at boot
+  if (Date.now() - lastWsMsgTs > 30000) {
+    setOFStatus('error');
+    connectOrderFlow();
+  }
+}, 15000);
 
 // ── INIT ───────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {

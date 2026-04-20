@@ -10,16 +10,21 @@
 // historical analog — including realistic intra-week pullbacks.
 
 const Anthropic = require('@anthropic-ai/sdk');
+const crypto = require('crypto');
 const dbm = require('../db');
 
 const TTL = 30 * 60 * 1000; // 30min cache
 const cache = { data: null, ts: 0 };
+
+// Short hash so each prompt version is identifiable in saved predictions.
+const promptHash = (s) => crypto.createHash('sha256').update(s).digest('hex').slice(0, 10);
 
 const SYSTEM_PROMPT = `You are ETHWATCH's 7-DAY FORECAST ENGINE. You read:
  • daily_90d — 3 months of daily ETH closes, day %, BTC %, and stored daily verdicts.
  • news_30d — 1 month of categorized headlines (crypto / macro / hope), one entry per day.
  • last_7_days — rich daily detail for the last week (hope_score 0-100, macro_score -100..+100, Claude daily summary).
  • today — expanded headline set for today across all three categories.
+ • user_posts — community/social posts with hope_score, war_score, people_sentiment (null if none imported). Use as retail street-level sentiment signal.
  • vitals — current technicals (EMA20/50/200, MACD, Bollinger bandwidth), funding rate, OI, BTC dominance, Fear & Greed, gas, hash rate.
  • order_flow — aggregate buy_vol / sell_vol / ratio over 5m, 1h, 24h.
 
@@ -28,6 +33,21 @@ CORE METHOD — PATTERN COMPLETION (this is non-negotiable):
 2. When you identify the strongest analog, study what happened in the 7 days AFTER that analog. Use that post-analog behavior as the skeleton of your new forecast.
 3. Modulate by the differences between then-and-now: macro score, hope score, funding/OI extremes, today's news catalysts, order-flow imbalance over 5m/1h/24h.
 4. A real 7-day path is NEVER a straight line. Your trajectory MUST contain at least one counter-trend day and realistic intraday wiggle, mirroring the analog's behavior. A bullish 7-day call with +5% expected still has pullback days; a bearish call still has relief bounces.
+
+FRICTION-VS-FUEL DISCIPLINE (funding rate):
+- Funding tells you about FRICTION or FUEL, not both. Match language to magnitude:
+  • Extreme negative funding (< -0.02% per 8h, or multi-day persistent negatives) = real FUEL for a squeeze. "Coiled spring" language allowed.
+  • Mildly negative funding (-0.01% to 0%) = low FRICTION, not stored fuel. Shorts aren't being paid enough to hold through a rally, but there is no squeeze thesis. Never say "squeeze incoming" from a single mildly negative print.
+  • Neutral / slightly positive funding = no squeeze thesis at all; don't invent one.
+- Calibrate confidence and sizing to match: low friction ≠ high fuel. Being honest about which regime you're in makes the forecast more actionable.
+
+ETH/BTC RATIO — REGIME FILTER, NOT ENTRY TIMING:
+Treat the ratio as a REGIME CLASSIFIER, not a precise timing signal.
+- Sustained downtrend in ETH/BTC = capital rotating into BTC dominance. In this regime, ETH-bullish setups have a LOWER COMPLETION RATE regardless of local technicals. Your forecast should discount bullish patterns here and widen downside bands.
+- When ETH/BTC turns and holds a HIGHER LOW, rotation is beginning. The same bullish setups that fail in the downtrend regime start completing.
+- CONFIRMATION: a single higher low is suggestive; a SECOND higher low is the confirmation. Without the second higher low, treat rotation as tentative.
+- LEAD TIME: historically anywhere from a few days to 2–3 weeks before price follows. Useful as a regime filter for a 7-day forecast, NOT as an entry-timing tool inside the window. Do not claim tighter lead times than the data supports.
+- Call out the current regime explicitly in key_drivers: "ETH/BTC regime: downtrend (discount bullish setups)" or "ETH/BTC regime: turning — first higher low at X, awaiting second for confirmation."
 
 WHAT TO SUBMIT via submit_forecast (call it exactly once, no prose):
  • direction, confidence (0-1), expected_move_pct — overall 7-day call.
@@ -170,6 +190,18 @@ function gatherContext(historyDays = 90) {
     ? daily_Nd[daily_Nd.length - 1].close
     : vitals?.technicals?.price ?? null;
 
+  // Community/user posts for the past 30 days — retail sentiment signal
+  const postsFrom = new Date(now - 30 * 86400000).toISOString().slice(0, 10);
+  const rawPosts  = dbm.getUserPostsRange?.(postsFrom, today) ?? [];
+  const user_posts = rawPosts.length ? rawPosts.map(p => ({
+    date: p.date,
+    source: p.source,
+    hope_score: p.hope_score,
+    war_score: p.war_score,
+    people_sentiment: p.people_sentiment,
+    summary: p.summary || p.content?.slice(0, 150),
+  })) : null;
+
   return {
     asof: new Date(now).toISOString(),
     history_days: days,
@@ -178,6 +210,7 @@ function gatherContext(historyDays = 90) {
     [`news_${newsD}d`]: news_Nd,
     last_7_days,
     today: todayNews,
+    user_posts,
     vitals,
     order_flow: {
       '5m':  flowSummary(flow5m),
@@ -187,7 +220,7 @@ function gatherContext(historyDays = 90) {
   };
 }
 
-async function buildForecast({ historyDays = 90, bias = 'neutral', persist = true } = {}) {
+async function buildForecast({ historyDays = 90, bias = 'neutral', persist = true, model = 'claude-sonnet-4-6' } = {}) {
   if (!process.env.ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY not configured');
 
   const context = gatherContext(historyDays);
@@ -202,7 +235,7 @@ async function buildForecast({ historyDays = 90, bias = 'neutral', persist = tru
 
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   const resp = await client.messages.create({
-    model: 'claude-sonnet-4-6',
+    model,
     max_tokens: 8000,
     system: SYSTEM_PROMPT,
     tools: [FORECAST_TOOL],
@@ -214,13 +247,21 @@ async function buildForecast({ historyDays = 90, bias = 'neutral', persist = tru
   if (!toolUse) throw new Error(`Forecast tool skipped (stop_reason=${resp.stop_reason})`);
 
   const forecast = toolUse.input;
-  forecast.model         = 'claude-sonnet-4-6';
+  forecast.model         = model;
   forecast.generated_ts  = Date.now();
   forecast.anchor_ts     = Date.now();
   forecast.anchor_price  = context.current_eth_price_usd;
   forecast.horizon       = '7d';
   forecast.history_days  = context.history_days;
   if (bias !== 'neutral') forecast.bias = bias;
+  // Save the exact prompt used so we can review which prompt versions
+  // produce accurate vs inaccurate forecasts later.
+  forecast.prompt = {
+    kind: 'forecast.single',
+    system: SYSTEM_PROMPT,
+    user_bias_directive: biasNote || null,
+    prompt_hash: promptHash(SYSTEM_PROMPT),
+  };
 
   // Persist to prediction history (skip when persist=false, e.g. combined sub-runs)
   if (persist) {
@@ -247,24 +288,26 @@ async function buildForecast({ historyDays = 90, bias = 'neutral', persist = tru
 // ── COMBINED MULTI-WINDOW FORECAST ─────────────────────────────────
 // Runs 4 independent forecasts (7d/15d/30d/60d), then asks Claude to
 // synthesise them into a single consensus forecast.
-async function buildCombinedForecast({ onProgress } = {}) {
+async function buildCombinedForecast({ onProgress, model = 'claude-sonnet-4-6', windows } = {}) {
   if (!process.env.ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY not configured');
 
-  const windows = [7, 15, 30, 60];
+  // Default windows: 4 layers (Sonnet). Opus "max layers" passes [7,15,30,60,90].
+  const subWindows = windows && windows.length ? windows : [7, 15, 30, 60];
+  const totalSteps = subWindows.length + 1;
   const results = [];
 
-  for (let i = 0; i < windows.length; i++) {
-    const d = windows[i];
+  for (let i = 0; i < subWindows.length; i++) {
+    const d = subWindows[i];
     const label = `Running ${d}-day window…`;
-    const pct = Math.round(((i) / 5) * 80); // 0→80 over 4 steps
-    if (onProgress) onProgress({ step: i + 1, total: 5, label, pct });
+    const pct = Math.round(((i) / totalSteps) * 80);
+    if (onProgress) onProgress({ step: i + 1, total: totalSteps, label, pct });
 
-    const fc = await buildForecast({ historyDays: d, bias: 'neutral', persist: false });
+    const fc = await buildForecast({ historyDays: d, bias: 'neutral', persist: false, model });
     results.push({ window: d, fc });
   }
 
-  // Step 5 — synthesis
-  if (onProgress) onProgress({ step: 5, total: 5, label: 'Synthesizing consensus…', pct: 85 });
+  // Final step — synthesis
+  if (onProgress) onProgress({ step: totalSteps, total: totalSteps, label: 'Synthesizing consensus…', pct: 85 });
 
   const compactSummaries = results.map(({ window, fc }) => ({
     window_days: window,
@@ -296,14 +339,14 @@ Call submit_forecast exactly once with the synthesised consensus.`;
 
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   const resp = await client.messages.create({
-    model: 'claude-sonnet-4-6',
+    model,
     max_tokens: 8000,
     system: SYNTHESIS_SYSTEM,
     tools: [FORECAST_TOOL],
     tool_choice: { type: 'tool', name: 'submit_forecast' },
     messages: [{
       role: 'user',
-      content: `Here are 4 independent ETH 7-day forecasts from different data windows. Synthesise them into a single consensus forecast:\n\n${JSON.stringify(compactSummaries, null, 2)}\n\nBuild the consensus via submit_forecast. Anchor the trajectory to the current ETH price. Include realistic oscillation — not a straight line.`,
+      content: `Here are ${subWindows.length} independent ETH 7-day forecasts from different data windows. Synthesise them into a single consensus forecast:\n\n${JSON.stringify(compactSummaries, null, 2)}\n\nBuild the consensus via submit_forecast. Anchor the trajectory to the current ETH price. Include realistic oscillation — not a straight line.`,
     }],
   });
 
@@ -311,21 +354,28 @@ Call submit_forecast exactly once with the synthesised consensus.`;
   if (!toolUse) throw new Error(`Synthesis tool skipped (stop_reason=${resp.stop_reason})`);
 
   const synthesis = toolUse.input;
-  synthesis.model          = 'claude-sonnet-4-6';
+  synthesis.model          = model;
   synthesis.generated_ts   = Date.now();
   synthesis.anchor_ts      = Date.now();
   synthesis.anchor_price   = results[0]?.fc?.anchor_price ?? null;
   synthesis.horizon        = '7d';
-  synthesis.history_days   = 60; // widest window used
+  synthesis.history_days   = Math.max(...subWindows);
   synthesis.combined       = true;
-  synthesis.source_windows = [7, 15, 30, 60];
+  synthesis.source_windows = subWindows;
+  synthesis.prompt = {
+    kind: 'forecast.combined',
+    system: SYNTHESIS_SYSTEM,
+    sub_forecast_system: SYSTEM_PROMPT,
+    prompt_hash: promptHash(SYNTHESIS_SYSTEM + '|' + SYSTEM_PROMPT),
+  };
 
   // Persist
   try {
     const targetDate = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+    const tag = model.includes('opus') ? 'opus-max' : 'combined';
     dbm.savePrediction({
       type: 'ai_forecast',
-      source_ref: `combined:7d+15d+30d+60d`,
+      source_ref: `${tag}:${subWindows.join('d+')}d`,
       predicted_direction: synthesis.direction,
       predicted_move_pct: synthesis.expected_move_pct,
       confidence: synthesis.confidence != null ? Math.round(synthesis.confidence * 100) : null,
@@ -345,16 +395,21 @@ Call submit_forecast exactly once with the synthesised consensus.`;
 }
 
 async function getForecast({ force = false, historyDays = 90, bias = 'neutral' } = {}) {
-  if (!force && cache.data && Date.now() - cache.ts < TTL) return cache.data;
-  // DB fallback — serve latest stored forecast immediately if available
-  if (!force && !cache.data) {
+  // Always serve cache/DB — NEVER auto-call Claude. Claude runs only on explicit
+  // admin button press (force=true). Cache TTL no longer triggers refresh.
+  if (!force) {
+    if (cache.data) return cache.data;
+    // Cold start: seed from DB so the first client request has data.
     const rows = dbm.getPredictions(1, 'ai_forecast');
     if (rows.length && rows[0].raw_result) {
       cache.data = rows[0].raw_result;
-      cache.ts   = Date.now() - TTL + 60000; // re-check in 60s
+      cache.ts   = Date.now();
       return cache.data;
     }
+    // Nothing cached, nothing in DB — fail loudly so the client shows empty state.
+    throw new Error('No forecast available. Run one from the admin panel.');
   }
+  // Explicit force (admin button) — call Claude now.
   const data = await buildForecast({ historyDays, bias });
   cache.data = data;
   cache.ts   = Date.now();

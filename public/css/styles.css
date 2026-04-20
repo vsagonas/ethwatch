@@ -1565,30 +1565,35 @@ canvas { display: block; width: 100% !important; }
 .chart-plus-news > .monthly-section .dt-verdict { font-size: 0.62rem; }
 .chart-plus-news > .monthly-section .dt-hcount  { font-size: 0.6rem; }
 
-/* ── CHART-ALIGNED STRIP (sits above the canvas, x-sync'd to it) ───────── */
-.chart-wrapper { position: relative; }
+/* ── DAY STRIP — ONE shared algorithm for line AND candle modes ────────── */
+/* Single #monthStrip element. Tiles are absolute-positioned via JS, spread
+   linearly across the chart width by timestamp. Same algorithm, same visual
+   result in both chart modes. Chart-wrapper has overflow:hidden so nothing
+   can escape the chart's border. */
+.chart-wrapper { position: relative; overflow: hidden; }
 .chart-aligned-strip {
   position: relative;
   width: 100%;
-  margin-bottom: 10px;
-  display: flex;
-  flex-direction: row;
-  align-items: flex-start;
-  gap: 6px;
-  overflow-x: auto;
-  overflow-y: visible;
-  scroll-behavior: smooth;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
+  height: 144px;
+  margin-bottom: 12px;
+  overflow: visible;
 }
-.chart-aligned-strip::-webkit-scrollbar { display: none; }
-/* expanded-tiles is always applied — left for backward compat */
 .chart-aligned-strip.expanded-tiles {}
 .chart-aligned-strip .day-col {
-  flex: 0 0 100px;
+  position: absolute;
+  top: 0;
+  width: 112px;
+  transform: translateX(-50%);
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
+}
+.chart-aligned-strip .day-col.first-forecast::before {
+  content: '';
+  position: absolute; top: 4%; bottom: 4%; left: -9px;
+  width: 2px;
+  background: repeating-linear-gradient(to bottom, var(--border) 0 3px, transparent 3px 6px);
+  pointer-events: none;
 }
 .chart-aligned-strip .day-tile {
   min-height: 0;
@@ -1608,8 +1613,8 @@ canvas { display: block; width: 100% !important; }
 .chart-aligned-strip .hope-graph { height: 18px; }
 .chart-aligned-strip .hope-label { font-size: 0.62rem; }
 .cs-empty {
+  position: absolute; inset: 0;
   display: flex; align-items: center; justify-content: center;
-  min-width: 100%; padding: 20px 0;
   color: var(--text2); font-size: 0.85rem;
   pointer-events: none;
 }
@@ -2013,6 +2018,10 @@ canvas { display: block; width: 100% !important; }
 [data-theme="dystopian"] .buy-chip.verdict-buy  { box-shadow: 0 0 16px rgba(0,229,255,0.35); }
 [data-theme="dystopian"] .buy-chip.verdict-sell { box-shadow: 0 0 16px rgba(255,56,100,0.35); }
 
+/* Stale: advice older than 2h. Chip is non-actionable — popup suppressed in JS. */
+.buy-chip.advice-stale { cursor: not-allowed; opacity: 0.6; }
+.buy-chip.advice-stale:hover { box-shadow: none; }
+
 /* Modal content styling for the buy popup */
 .ba-modal-top {
   display: grid;
@@ -2066,6 +2075,57 @@ canvas { display: block; width: 100% !important; }
 .ba-lists ul { margin: 0; padding-left: 18px; }
 .ba-lists li { font-size: 0.86rem; line-height: 1.45; margin-bottom: 3px; }
 .ba-empty { opacity: 0.5; }
+
+/* ── Advanced Opus Analysis ──────────────────────────────── */
+.ba-advanced-divider {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+.ba-advanced-btn {
+  display: flex; align-items: center; gap: 10px;
+  width: 100%; padding: 10px 14px;
+  background: linear-gradient(135deg, rgba(122,63,255,0.1) 0%, rgba(192,79,255,0.1) 100%);
+  border: 1px solid rgba(160,96,255,0.4); border-radius: 8px;
+  color: var(--text); cursor: pointer; font-size: 0.88rem; font-weight: 700;
+  transition: all 0.2s; text-align: left;
+}
+.ba-advanced-btn:hover { border-color: rgba(160,96,255,0.8); background: linear-gradient(135deg, rgba(122,63,255,0.18) 0%, rgba(192,79,255,0.18) 100%); }
+.ba-advanced-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.ba-advanced-sub { font-size: 0.72rem; font-weight: 400; color: var(--text2); margin-left: auto; }
+.ba-advanced-panel { margin-top: 14px; }
+.ba-adv-loading {
+  display: flex; align-items: center; gap: 10px;
+  color: var(--text2); font-size: 0.84rem; padding: 12px 0;
+}
+.ba-adv-top {
+  display: flex; align-items: flex-start; gap: 16px; margin-bottom: 10px;
+}
+.ba-adv-verdict-wrap { display: flex; align-items: center; gap: 10px; }
+.ba-adv-model-badge {
+  font-size: 0.62rem; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+  padding: 2px 8px; border-radius: 20px;
+  background: linear-gradient(135deg, rgba(122,63,255,0.2) 0%, rgba(192,79,255,0.2) 100%);
+  border: 1px solid rgba(160,96,255,0.5); color: #c084ff;
+}
+.ba-adv-context {
+  font-size: 0.84rem; color: var(--text2); line-height: 1.55;
+  margin: 8px 0; padding: 10px 12px;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 7px;
+}
+.ba-adv-forecast-row {
+  display: flex; flex-direction: column; gap: 4px;
+  padding: 10px 12px; margin: 8px 0;
+  background: rgba(88,166,255,0.06); border: 1px solid rgba(88,166,255,0.2); border-radius: 7px;
+  font-size: 0.84rem;
+}
+.ba-adv-fc-label {
+  font-size: 0.65rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 1px; color: var(--accent);
+}
+.ba-adv-ts {
+  font-size: 0.7rem; color: var(--text2); margin-top: 10px; text-align: right;
+}
 
 /* ── Aligned strip: always expanded ─────────────────────── */
 .chart-aligned-strip .day-tile { padding: 6px 6px 7px; }
@@ -2414,8 +2474,8 @@ body { padding-bottom: 240px; } /* reserve space so content isn't covered */
 .hero-misc-stats .stat-card.mini { flex: 0 0 auto; min-width: 108px; padding: 6px 10px; }
 
 /* ── Strip: compact on small screens ── */
-.chart-aligned-strip { margin-bottom: 4px; }
-.chart-aligned-strip .day-col  { gap: 1px; flex: 0 0 86px; }
+.chart-aligned-strip { margin-bottom: 6px; height: 120px; }
+.chart-aligned-strip .day-col  { gap: 2px; width: 86px; }
 .chart-aligned-strip .day-tile { padding: 4px 5px 4px; }
 .chart-aligned-strip .hope-cell { padding: 1px 3px; }
 .chart-aligned-strip .hope-graph { height: 14px; }
@@ -3367,8 +3427,8 @@ body.footer-hidden .news-popup { bottom: 120px; }
   font-weight: 600;
 }
 /* Expanded forecast tiles need more height than historical tiles */
-.chart-aligned-strip.expanded-tiles .forecast-col { width: 110px; }
-.chart-aligned-strip.expanded-tiles .forecast-tile { min-height: 80px; }
+.chart-aligned-strip .forecast-col { width: 112px; }
+.chart-aligned-strip .forecast-tile { min-height: 88px; }
 
 /* ═══════════════════════════════════════════════════════════
    FORECAST DAY DETAIL MODAL

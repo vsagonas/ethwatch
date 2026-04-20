@@ -473,7 +473,18 @@ function clearMarkedCandles() {
   saveMarkedCandles();
   refreshMarkers();
   document.getElementById('predictionSection').style.display = 'none';
-  window.toast('Marks cleared.', 'info');
+
+  // If an Oracle pattern prediction is currently the active overlay, drop it
+  // and restore the live 7-day forecast (if one exists).
+  const activeId = window.activePredictionSetId;
+  const isPatternActive = activeId && activeId !== '__forecast7d__';
+  if (isPatternActive) {
+    window.clearActivePrediction?.();
+    window.restoreSavedForecastOverlay?.();
+    window.toast('Marks cleared · pattern removed · 7d forecast restored.', 'info');
+  } else {
+    window.toast('Marks cleared.', 'info');
+  }
 }
 
 // ── LOAD OHLC DATA ─────────────────────────────────────────
@@ -513,6 +524,9 @@ function moveStripToContainer(containerId) {
   } else {
     wrapper.appendChild(strip);
   }
+  // Hide every tile until the next positioning pass — stale `left` values
+  // from the other chart's coordinate space would place cards off-screen.
+  strip.querySelectorAll('.day-col').forEach(c => { c.style.display = 'none'; });
 }
 
 function applyChartType(type) {

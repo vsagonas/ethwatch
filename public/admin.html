@@ -52,13 +52,49 @@
     <div class="adm-bars" id="climateBars"></div>
   </section>
 
-  <!-- ── RECALCULATIONS ───────────────────────── -->
+  <!-- ── POSTS & FEEDS STATS ────────────────────── -->
   <section class="adm-section">
-    <div class="adm-section-title">RECALCULATIONS</div>
+    <div class="adm-section-title">📊 POSTS &amp; FEEDS STATS
+      <button class="adm-btn" id="refreshPostsStatsBtn" style="margin-left:auto;padding:4px 10px">↻ Refresh</button>
+    </div>
+    <div class="posts-stats-grid" id="postsStatsGrid">
+      <div class="posts-stats-col" id="pstCol-today">
+        <div class="pst-col-head">TODAY</div>
+        <div class="pst-body"><div class="adm-loading">Loading…</div></div>
+      </div>
+      <div class="posts-stats-col" id="pstCol-week">
+        <div class="pst-col-head">LAST 7 DAYS</div>
+        <div class="pst-body"><div class="adm-loading">Loading…</div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── MASTER PREDICT ─────────────────────────── -->
+  <section class="adm-section master-predict-section">
+    <div class="adm-section-title">🎯 MASTER PREDICTION REPORT
+      <button class="adm-btn" id="viewLastMasterBtn" style="margin-left:auto;padding:4px 10px">📜 Latest Report</button>
+    </div>
+    <div class="master-predict-card">
+      <div class="mp-desc">
+        Synthesizes <strong>every</strong> data source: 90d sentiment, 14d headlines, vitals, order flow, user posts, sentiment aggregates — plus the latest Opus 7d forecast and Opus Buy/HODL advice. Opus writes a full 500-900 word report with today's feeling, key data, contradictions, invalidation levels, and an action plan.
+      </div>
+      <button class="adm-btn master-btn" id="masterPredictBtn">🎯 RUN MASTER PREDICT</button>
+      <div class="acc-status" id="masterPredictStatus"></div>
+    </div>
+  </section>
+
+  <!-- ── AI CONTROLS BOX ───────────────────────── -->
+  <section class="adm-section adm-ai-box">
+    <div class="adm-section-title">
+      🤖 AI CONTROLS
+      <button class="adm-btn adm-import-posts-btn" id="openUserPostsBtn" style="margin-left:auto">📥 Import User Posts</button>
+    </div>
+
     <div class="adm-controls-row">
 
+      <!-- Forecast Generator -->
       <div class="adm-control-card">
-        <div class="acc-title">FORECAST GENERATOR</div>
+        <div class="acc-title">📈 FORECAST GENERATOR</div>
         <div class="acc-desc">Generate a 7-day ETH forecast. Choose data window, forecast mode, then run.</div>
 
         <div class="apf-label" style="margin-bottom:6px">MODE</div>
@@ -77,17 +113,12 @@
         </div>
 
         <button class="adm-btn primary" id="runForecastBtn" style="margin-top:8px">▶ Single Window Forecast</button>
-        <button class="adm-btn" id="runCombinedBtn" style="margin-top:6px">⊕ Combined Multi-Window</button>
+        <button class="adm-btn" id="runCombinedBtn" style="margin-top:6px">⊕ Combined Multi-Window (Sonnet)</button>
+        <button class="adm-btn opus" id="runOpusBtn" style="margin-top:6px">🧠 Advanced Opus Prediction — Max Layers</button>
         <div class="acc-status" id="forecastStatus"></div>
       </div>
 
-      <div class="adm-control-card">
-        <div class="acc-title">💡 REFRESH BUY / HODL ADVICE</div>
-        <div class="acc-desc">Force a fresh BUY / HODL / SELL recommendation from Claude using current market vitals and sentiment. Updates the chip on Watch instantly.</div>
-        <button class="adm-btn primary" id="refreshBuyBtn">▶ Refresh Advice</button>
-        <div class="acc-status" id="buyAdviceStatus"></div>
-      </div>
-
+      <!-- Rescore Sentiment -->
       <div class="adm-control-card">
         <div class="acc-title">📊 RESCORE SENTIMENT</div>
         <div class="acc-desc">Re-run Claude on the last N days of sentiment (clears existing verdicts and rebuilds). Use after adding missing headlines.</div>
@@ -99,6 +130,24 @@
         <div class="acc-status" id="rescoreStatus"></div>
       </div>
 
+    </div>
+
+    <!-- Buy/HODL card — full width -->
+    <div class="adm-control-card adm-buy-card" style="margin-top:16px">
+      <div class="acc-title">💡 REFRESH BUY / HODL ADVICE</div>
+      <div class="acc-desc">Force a fresh recommendation from Claude. Opus uses 90d data + multi-window forecast + community posts and becomes the live chip on Watch instantly.</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+        <button class="adm-btn primary" id="refreshBuyBtn">▶ Refresh (Sonnet)</button>
+        <button class="adm-btn opus" id="opusBuyBtn">🧠 Advanced Opus — 90d + Forecast + Posts</button>
+      </div>
+      <div class="acc-status" id="buyAdviceStatus"></div>
+      <div id="opusBuyResult" style="display:none;" class="apm-result"></div>
+      <div class="buy-history-wrap">
+        <div class="buy-history-header">ADVICE HISTORY <span class="adm-count" id="buyRecCount"></span></div>
+        <div id="buyRecList" class="buy-rec-list">
+          <div class="adm-loading">Loading…</div>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -187,5 +236,141 @@
 </main>
 
 <script src="/js/admin.js"></script>
+
+<!-- ── BUY ADVICE DETAIL MODAL ── -->
+<div class="adm-progress-backdrop" id="buyDetailBackdrop" style="display:none" onclick="if(event.target===this)closeBuyDetail()">
+  <div class="adm-progress-modal" style="max-width:540px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+      <div>
+        <div class="apm-title" id="bdTitle" style="margin-bottom:2px">Advice Detail</div>
+        <div style="font-size:0.72rem;color:var(--text-dim)" id="bdMeta"></div>
+      </div>
+      <button class="adm-btn" onclick="closeBuyDetail()" style="padding:4px 10px">✕</button>
+    </div>
+    <div id="bdVerdict" style="font-size:1.6rem;font-weight:900;margin-bottom:8px"></div>
+    <div id="bdPromptAnchor" style="margin-bottom:8px"></div>
+    <div id="bdHeadline" class="apm-result" style="margin-bottom:12px"></div>
+    <div id="bdMacro" style="display:none;font-size:0.82rem;color:var(--text-dim);line-height:1.5;padding:8px 12px;background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:7px;margin-bottom:10px;max-height:80px;overflow-y:auto"></div>
+    <div id="bdFcRow" style="display:none;padding:8px 12px;background:rgba(88,166,255,0.06);border:1px solid rgba(88,166,255,0.2);border-radius:7px;margin-bottom:10px;max-height:70px;overflow-y:auto">
+      <div style="font-size:0.62rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--accent);margin-bottom:3px">Forecast alignment</div>
+      <div id="bdFcAlign" style="font-size:0.82rem"></div>
+    </div>
+    <div class="buy-detail-lists" id="bdLists"></div>
+  </div>
+</div>
+
+<!-- ── PROMPT VIEWER MODAL ── -->
+<div class="adm-progress-backdrop" id="promptViewerBackdrop" style="display:none" onclick="if(event.target===this)closePromptViewer()">
+  <div class="adm-progress-modal" style="max-width:780px; max-height:85vh; overflow:hidden; display:flex; flex-direction:column;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-shrink:0;">
+      <div>
+        <div class="apm-title" style="margin-bottom:2px">📝 Prompt Used For This Prediction</div>
+        <div style="font-size:0.72rem;color:var(--text-dim)">
+          <span id="pvKind">—</span> · hash <code id="pvHash" style="background:var(--bg3);padding:1px 6px;border-radius:4px">—</code>
+          · model <span id="pvModel">—</span> · created <span id="pvCreated">—</span>
+        </div>
+      </div>
+      <button class="adm-btn" onclick="closePromptViewer()" style="padding:4px 10px">✕</button>
+    </div>
+    <div style="font-size:0.64rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--accent);margin-bottom:6px">SYSTEM PROMPT</div>
+    <pre id="pvSystem" style="flex:1;overflow:auto;background:var(--bg3);border:1px solid var(--border);border-radius:7px;padding:12px;font-size:0.76rem;line-height:1.55;white-space:pre-wrap;word-break:break-word;margin:0"></pre>
+    <pre id="pvExtra" style="display:none;margin-top:10px;max-height:180px;overflow:auto;background:var(--bg3);border:1px solid var(--border);border-radius:7px;padding:10px;font-size:0.72rem;line-height:1.5;white-space:pre-wrap;word-break:break-word"></pre>
+  </div>
+</div>
+
+<!-- ── USER POSTS IMPORT MODAL ── -->
+<div class="adm-progress-backdrop" id="userPostsBackdrop" style="display:none">
+  <div class="adm-progress-modal" style="max-width:600px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+      <div>
+        <div class="apm-title" style="margin-bottom:2px">📥 Import Community / User Posts</div>
+        <div style="font-size:0.72rem;color:var(--text-dim)">Paste anything — JSON, CSV, markdown, numbered list, chat export, or plain prose. Sonnet figures out the structure.</div>
+      </div>
+      <button class="adm-btn" id="userPostsClose" style="padding:4px 10px">✕</button>
+    </div>
+
+    <textarea id="userPostsJson" class="adm-input full" rows="10"
+      placeholder="Paste freely. Examples Sonnet will understand:
+
+— April 18 —
+reddit: People are scared, everyone thinks ETH is dead. Classic FUD cycle.
+twitter: Huge optimism on staking yields, retail buying the dip hard today.
+
+Or strict JSON:
+[{&quot;date&quot;:&quot;2026-04-18&quot;,&quot;content&quot;:&quot;…&quot;,&quot;source&quot;:&quot;reddit&quot;}]
+
+Or a loose list:
+1) Everyone is capitulating on Discord, cope levels maxed
+2) War fear spiking after Iran headlines, posts panicking about oil
+
+Sonnet will extract discrete posts, infer dates / sources from context, and score each."
+      style="font-family:monospace;font-size:0.78rem;resize:vertical"></textarea>
+
+    <div style="display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap;">
+      <button class="adm-btn primary" id="userPostsImportBtn">⚡ Parse &amp; Score with Sonnet</button>
+      <div class="acc-status" id="userPostsStatus" style="flex:1"></div>
+    </div>
+
+    <div style="margin-top:14px;padding:10px 12px;background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:7px">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+        <div>
+          <div style="font-size:0.76rem;font-weight:700;text-transform:uppercase;letter-spacing:1px">🟠 Pull Reddit RSS</div>
+          <div style="font-size:0.7rem;color:var(--text-dim);margin-top:2px">Fetch r/news, r/cryptomarket, r/bitcoin, r/etherium feeds and score with Sonnet. Reddit may block — you&rsquo;ll see per-feed results.</div>
+        </div>
+        <button class="adm-btn" id="redditPullBtn">🌐 Pull &amp; Score</button>
+      </div>
+      <textarea id="redditFeedsList" class="adm-input full" rows="4"
+        style="font-family:monospace;font-size:0.72rem;resize:vertical"
+        placeholder="One feed URL per line. Leave blank for defaults.">https://www.reddit.com/r/news/.rss
+https://www.reddit.com/r/cryptomarket/.rss
+https://www.reddit.com/r/bitcoin/.rss
+https://www.reddit.com/r/etherium/.rss</textarea>
+      <div class="acc-status" id="redditPullStatus" style="margin-top:6px"></div>
+      <div id="redditFeedResults" style="margin-top:6px;font-size:0.7rem;color:var(--text-dim);line-height:1.6"></div>
+    </div>
+
+    <div style="margin-top:16px;">
+      <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text-dim);margin-bottom:8px">IMPORTED POSTS BY DATE</div>
+      <div id="userPostsCountsList" style="max-height:160px;overflow-y:auto;">
+        <div class="adm-loading">Loading…</div>
+      </div>
+    </div>
+
+    <div style="margin-top:12px;padding:10px 12px;background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:7px;font-size:0.72rem;color:var(--text-dim);line-height:1.6">
+      <strong style="color:var(--text)">How it works:</strong> Sonnet parses the freeform input into discrete posts, infers
+      date / source from context (falling back to today if unknown), and scores each for <em>hope_score</em> (0–100),
+      <em>war_score</em> (0–100), <em>people_sentiment</em>, and a one-sentence summary. Sibling posts disambiguate
+      sarcasm / memes / FUD patterns that read wrong in isolation.
+      The scores feed the Advanced Opus Buy/HODL + Opus 7-day forecast context.
+    </div>
+  </div>
+</div>
+
+<!-- ── MASTER REPORT VIEWER MODAL ── -->
+<div class="adm-progress-backdrop" id="masterReportBackdrop" style="display:none" onclick="if(event.target===this)document.getElementById('masterReportBackdrop').style.display='none'">
+  <div class="adm-progress-modal master-report-modal">
+    <div class="master-report-header">
+      <div>
+        <div class="master-report-title" id="mrTitle">Master Report</div>
+        <div class="master-report-sub" id="mrSub"></div>
+      </div>
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+        <button class="adm-btn" id="masterReportCopyJson" style="padding:4px 10px" title="Copy full report JSON to clipboard — paste into Claude for summary / Reddit post / rewrite">📋 Copy JSON</button>
+        <button class="adm-btn" id="masterReportDownloadJson" style="padding:4px 10px" title="Download JSON file">💾 Download</button>
+        <button class="adm-btn" id="masterReportViewJson" style="padding:4px 10px" title="View raw JSON">{ }</button>
+        <button class="adm-btn" id="masterReportClose" style="padding:4px 10px">✕</button>
+      </div>
+    </div>
+    <div class="master-report-body" id="masterReportBody"></div>
+    <div id="masterReportJsonPane" style="display:none;border-top:1px solid var(--border);padding:12px 16px;background:var(--bg3);max-height:40vh;overflow:auto">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <div style="font-size:0.7rem;font-weight:700;letter-spacing:1px;color:var(--text-dim);text-transform:uppercase">Raw JSON (paste into Claude)</div>
+        <button class="adm-btn" id="masterReportJsonClose" style="padding:2px 8px;font-size:0.72rem">Hide</button>
+      </div>
+      <textarea id="masterReportJsonText" style="width:100%;min-height:260px;font-family:monospace;font-size:0.72rem;background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px;resize:vertical" readonly></textarea>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>

@@ -14,6 +14,7 @@ const orderflow = require('./services/orderflow');
 const marketvitals = require('./services/marketvitals');
 const buyadvisor = require('./services/buyadvisor');
 const forecast = require('./services/forecast');
+const masterpredict = require('./services/masterpredict');
 
 const app = express();
 app.use(cors());
@@ -636,7 +637,7 @@ app.post('/api/news/ai-summary', async (req, res) => {
 
     const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
     const message = await client.messages.create({
-      model: 'claude-sonnet-4-6',
+      model: 'claude-haiku-4-5-20251001',
       max_tokens: 512,
       messages: [{
         role: 'user',
@@ -756,7 +757,8 @@ app.get('/api/monthly-sentiment', async (req, res) => {
     return res.status(400).json({ success: false, error: 'Invalid currency' });
   }
   try {
-    const rows = await buildMonthlySentiment(cgGet, { days, currency });
+    // NEVER auto-call Claude for missing verdicts. Admin triggers rescore explicitly.
+    const rows = await buildMonthlySentiment(cgGet, { days, currency, allowClaude: false });
     res.json({ success: true, days: rows, currency, serverTs: Date.now() });
   } catch (err) {
     console.error('Monthly sentiment error:', err.message);
@@ -784,11 +786,8 @@ app.get('/api/day-detail', async (req, res) => {
     return res.status(400).json({ success: false, error: 'date must be YYYY-MM-DD' });
   }
   try {
-    const todayISO = new Date().toISOString().slice(0, 10);
-    if (date === todayISO) {
-      // Actively index today (prices + headlines + Claude) so the 1D card always shows real data.
-      await buildTodaySentiment(cgGet, currency).catch(err => console.warn('buildTodaySentiment:', err.message));
-    }
+    // NEVER auto-call Claude. Today's card shows whatever is already in the DB.
+    // Admin runs Rescore Sentiment explicitly to fill in today's verdict.
     const detail = await getDayDetail(date, currency);
     res.json({ success: true, ...detail });
   } catch (err) {
@@ -899,6 +898,561 @@ app.get('/api/buy-time', async (req, res) => {
     if (stale) return res.json({ success: true, data: stale, stale: true, error: err.message });
     res.status(502).json({ success: false, error: err.message });
   }
+});
+
+// Cheap poll endpoint — returns only the generated_ts so the client can
+// detect when a new recommendation (e.g. Opus from admin) has gone live.
+app.get('/api/buy-time-ts', (req, res) => {
+  const cache = buyadvisor.getCache?.();
+  const ts = cache?.data?.generated_ts ?? dbm.getLatestBuyRecommendation()?.generated_ts ?? null;
+  res.json({ ts });
+});
+
+// ── BUY/HODL recommendation history ──────────────────────────────────────
+app.get('/api/buy-time-history', (req, res) => {
+  try {
+    const rows = dbm.getBuyRecommendationHistory();
+    res.json({ success: true, rows });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/buy-time-delete', (req, res) => {
+  try {
+    const ts = parseInt(req.body?.ts);
+    if (!isFinite(ts)) return res.status(400).json({ success: false, error: 'Invalid ts' });
+    const changed = dbm.deleteBuyRecommendation(ts);
+    const c = buyadvisor.getCache?.();
+    if (c?.data?.generated_ts === ts) { c.data = null; c.ts = 0; }
+    res.json({ success: true, deleted: changed > 0 });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ── ADVANCED OPUS BUY/HODL advisor (90d + live forecast) ─────────────────
+app.get('/api/buy-time-advanced', async (req, res) => {
+  const force = req.query.force === '1';
+  try {
+    const data = await buyadvisor.getAdvancedRecommendation({ force });
+    res.json({ success: true, data });
+  } catch (err) {
+    // 412 Precondition Failed → client knows the fix is "run Opus forecast first".
+    const status = err.code === 'NEED_OPUS_FORECAST' ? 412 : 502;
+    res.status(status).json({ success: false, error: err.message, code: err.code || null });
+  }
+});
+
+// ── USER POSTS: freeform import ──────────────────────────────────────────
+// Fast path: JSON-looking input is parsed locally → only the scoring goes to
+// Sonnet (in small batches, fixed output size). Slow path: non-JSON prose
+// goes through Sonnet once for extraction. Either way, no request hangs.
+
+const USER_POSTS_SCORE_BATCH = 10;
+const USER_POSTS_TIMEOUT_MS  = 90 * 1000; // per Sonnet call
+
+const USER_POSTS_SCORE_TOOL = {
+  name: 'score_posts',
+  description: 'Score community / retail posts for hope, war/fear, and people sentiment.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      posts: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            index:            { type: 'number', description: 'Zero-based index matching the input list.' },
+            hope_score:       { type: 'number', description: '0=despair, 50=neutral, 100=euphoric.' },
+            war_score:        { type: 'number', description: '0=calm, 100=panic/war/crisis fear.' },
+            people_sentiment: { type: 'string', enum: ['positive', 'neutral', 'negative'] },
+            summary:          { type: 'string', description: 'One sentence.' },
+          },
+          required: ['index', 'hope_score', 'war_score', 'people_sentiment', 'summary'],
+        },
+      },
+    },
+    required: ['posts'],
+  },
+};
+
+const USER_POSTS_EXTRACT_TOOL = {
+  name: 'extract_and_score_posts',
+  description: 'Parse freeform non-JSON text into discrete posts and score each.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      posts: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            date:             { type: 'string' },
+            content:          { type: 'string' },
+            source:           { type: 'string' },
+            hope_score:       { type: 'number' },
+            war_score:        { type: 'number' },
+            people_sentiment: { type: 'string', enum: ['positive', 'neutral', 'negative'] },
+            summary:          { type: 'string' },
+          },
+          required: ['date', 'content', 'hope_score', 'war_score', 'people_sentiment', 'summary'],
+        },
+      },
+    },
+    required: ['posts'],
+  },
+};
+
+const USER_POSTS_SCORE_SYSTEM = `Score each community / retail post about the crypto/ETH market for hope, war/fear, and sentiment. Read all posts together to catch sarcasm, copium, memes, FUD. Output exactly one entry per input post, matching its index.
+- hope_score 0-100 (0=despair, 100=euphoric/FOMO)
+- war_score  0-100 (0=calm, 100=panic/crisis)
+- people_sentiment: positive|neutral|negative
+- summary: one sentence.
+Call score_posts exactly once.`;
+
+const USER_POSTS_EXTRACT_SYSTEM = `Parse freeform text into discrete community posts about crypto/ETH, then score each. Always return at least one post if the input has content. Split on blank lines, numbered markers, speaker tags; if nothing separates them emit the whole thing as a single post. For each post: date (YYYY-MM-DD, fall back to import_date), verbatim content, source if identifiable, and the four scores (hope_score 0-100, war_score 0-100, people_sentiment, one-sentence summary). Read siblings together for sarcasm/FUD context. Call extract_and_score_posts exactly once.`;
+
+function withTimeout(promise, ms, label) {
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(`${label} timed out after ${Math.round(ms/1000)}s`)), ms);
+    promise.then(v => { clearTimeout(t); resolve(v); }, e => { clearTimeout(t); reject(e); });
+  });
+}
+
+// Parse paste as JSON (strict → loose recovery). Returns { items, meta } where
+// items is an array of post-like objects and meta may hold fallback fields
+// (e.g. a snapshot date found in a wrapper object).
+function tryParseJson(text) {
+  const s = text.trim();
+  if (!/^[\[\{]/.test(s)) return null;
+  const parseAny = (str) => {
+    try { return JSON.parse(str); } catch {}
+    try {
+      const fixed = str.replace(/,\s*([}\]])/g, '$1').replace(/'([^'\\]*(\\.[^'\\]*)*)'/g, '"$1"');
+      return JSON.parse(fixed);
+    } catch {}
+    return undefined;
+  };
+  const parsed = parseAny(s);
+  if (parsed === undefined) return null;
+
+  // 1. Raw array of posts
+  if (Array.isArray(parsed)) return { items: parsed, meta: {} };
+
+  if (parsed && typeof parsed === 'object') {
+    // 2. Look for a posts array under any common wrapper key.
+    const WRAPPER_KEYS = ['posts', 'items', 'entries', 'data', 'results', 'messages', 'tweets', 'threads', 'comments', 'records'];
+    let items = null;
+    for (const k of WRAPPER_KEYS) {
+      if (Array.isArray(parsed[k])) { items = parsed[k]; break; }
+    }
+    // Or: any top-level key whose value is an array of objects
+    if (!items) {
+      for (const v of Object.values(parsed)) {
+        if (Array.isArray(v) && v.length && typeof v[0] === 'object' && !Array.isArray(v[0])) {
+          items = v; break;
+        }
+      }
+    }
+    // Pull fallback date from any metadata-like wrapper
+    const meta = {};
+    const metaObj = parsed.snapshot_metadata || parsed.metadata || parsed.meta || parsed;
+    const metaDate = metaObj?.snapshot_date || metaObj?.date || metaObj?.day || metaObj?.as_of || null;
+    if (typeof metaDate === 'string' && /^\d{4}-\d{2}-\d{2}/.test(metaDate)) meta.fallback_date = metaDate.slice(0, 10);
+
+    if (items) return { items, meta };
+    // Fallback: single object → single post
+    return { items: [parsed], meta };
+  }
+  return null;
+}
+
+const POST_CONTENT_KEYS = ['content', 'text', 'body', 'message', 'post', 'tweet', 'description'];
+const POST_DATE_KEYS    = ['date', 'calculated_date', 'timestamp', 'created_at', 'ts', 'day', 'published', 'published_at', 'time'];
+const POST_SOURCE_KEYS  = ['source', 'platform', 'author', 'site', 'channel'];
+
+// Any value (string, number, object, array) → readable flat text.
+function valueToText(v, depth = 0) {
+  if (v == null) return '';
+  if (typeof v === 'string') return v.trim();
+  if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+  if (depth > 3) return '';
+  if (Array.isArray(v)) return v.map(x => valueToText(x, depth + 1)).filter(Boolean).join(' | ');
+  if (typeof v === 'object') {
+    return Object.entries(v)
+      .map(([k, val]) => { const t = valueToText(val, depth + 1); return t ? `${k}: ${t}` : ''; })
+      .filter(Boolean)
+      .join(' · ');
+  }
+  return String(v);
+}
+
+function normalizePreparsedPost(obj, importDate, fallbackDate) {
+  if (!obj || typeof obj !== 'object') return null;
+
+  // Build content from whatever fields exist. Aggregate everything that looks
+  // like signal so nuance in nested objects isn't lost.
+  const title   = valueToText(obj.title);
+  const summary = valueToText(obj.content_summary ?? obj.summary);
+  const notes   = valueToText(obj.notes ?? obj.note);
+  let primary = '';
+  for (const k of POST_CONTENT_KEYS) {
+    if (obj[k] != null) { primary = valueToText(obj[k]); if (primary) break; }
+  }
+  const parts = [];
+  if (title)   parts.push(`TITLE: ${title}`);
+  if (primary && (!summary || !summary.includes(primary))) parts.push(primary);
+  if (summary && summary !== primary) parts.push(`SUMMARY: ${summary}`);
+  if (notes)   parts.push(`NOTES: ${notes}`);
+  if (obj.sentiment)  parts.push(`SENTIMENT_HINT: ${valueToText(obj.sentiment)}`);
+  if (obj.flair)      parts.push(`FLAIR: ${valueToText(obj.flair)}`);
+  if (obj.upvotes != null || obj.comments != null) {
+    parts.push(`ENGAGEMENT: ${obj.upvotes ?? '—'} up / ${obj.comments ?? '—'} comments`);
+  }
+  if (obj.key_data)       parts.push(`KEY_DATA: ${valueToText(obj.key_data)}`);
+  if (obj.signals)        parts.push(`SIGNALS: ${valueToText(obj.signals)}`);
+  if (obj.market_implication) parts.push(`MARKET_IMPLICATION: ${valueToText(obj.market_implication)}`);
+  if (!parts.length) parts.push(valueToText(obj));
+
+  const content = parts.join('\n').trim();
+  if (!content) return null;
+
+  // Date resolution
+  let date = fallbackDate || importDate;
+  for (const k of POST_DATE_KEYS) {
+    const v = obj[k];
+    if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v)) { date = v.slice(0, 10); break; }
+    if (typeof v === 'number' && isFinite(v)) {
+      const iso = new Date(v > 1e12 ? v : v * 1000).toISOString();
+      date = iso.slice(0, 10); break;
+    }
+  }
+
+  // Source resolution
+  let source = 'manual';
+  for (const k of POST_SOURCE_KEYS) {
+    if (typeof obj[k] === 'string' && obj[k].trim()) { source = obj[k].trim().slice(0, 60); break; }
+  }
+
+  return { date, content: content.slice(0, 6000), source };
+}
+
+async function scoreBatch(client, batch) {
+  const payload = batch.map((p, i) => ({ index: i, date: p.date, source: p.source, content: p.content }));
+  const resp = await withTimeout(
+    client.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 3000,
+      system: USER_POSTS_SCORE_SYSTEM,
+      tools: [USER_POSTS_SCORE_TOOL],
+      tool_choice: { type: 'tool', name: 'score_posts' },
+      messages: [{ role: 'user', content: JSON.stringify(payload) }],
+    }),
+    USER_POSTS_TIMEOUT_MS,
+    'Sonnet scoring',
+  );
+  const toolUse = resp.content?.find(c => c.type === 'tool_use' && c.name === 'score_posts');
+  if (!toolUse) throw new Error(`Sonnet skipped score_posts (stop_reason=${resp.stop_reason})`);
+  const raw = toolUse.input?.posts;
+  // Sonnet occasionally returns an object keyed by index instead of an array —
+  // coerce so the caller can always .find() safely.
+  if (Array.isArray(raw)) return raw;
+  if (raw && typeof raw === 'object') return Object.values(raw);
+  return [];
+}
+
+async function extractAndScoreProse(client, text, importDate) {
+  const resp = await withTimeout(
+    client.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 4000,
+      system: USER_POSTS_EXTRACT_SYSTEM,
+      tools: [USER_POSTS_EXTRACT_TOOL],
+      tool_choice: { type: 'tool', name: 'extract_and_score_posts' },
+      messages: [{ role: 'user', content: `import_date (fallback): ${importDate}\n\n--- PASTED INPUT ---\n${text}` }],
+    }),
+    USER_POSTS_TIMEOUT_MS,
+    'Sonnet extraction',
+  );
+  const toolUse = resp.content?.find(c => c.type === 'tool_use' && c.name === 'extract_and_score_posts');
+  if (!toolUse) throw new Error(`Sonnet skipped extract_and_score_posts (stop_reason=${resp.stop_reason})`);
+  return toolUse.input.posts || [];
+}
+
+app.post('/api/user-posts/import', async (req, res) => {
+  const text = typeof req.body?.text === 'string' ? req.body.text.trim() : '';
+  if (!text) return res.status(400).json({ success: false, error: 'text must be a non-empty string' });
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return res.status(503).json({ success: false, error: 'ANTHROPIC_API_KEY not configured' });
+  }
+
+  const importDate = new Date().toISOString().slice(0, 10);
+  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  const scored = [];
+  const dbg = { mode: null, pre_parsed: 0, extracted: 0, dropped: 0, batches: 0 };
+
+  try {
+    const parsed = tryParseJson(text);
+
+    if (parsed && parsed.items?.length) {
+      // FAST PATH: JSON detected (raw array OR wrapped {posts:[...]}). Extract locally, score in batches.
+      dbg.mode = 'json';
+      dbg.wrapper_meta_date = parsed.meta?.fallback_date ?? null;
+      const fallbackDate = parsed.meta?.fallback_date || importDate;
+      const normalized = parsed.items.map(p => normalizePreparsedPost(p, importDate, fallbackDate)).filter(Boolean);
+      dbg.pre_parsed = normalized.length;
+      dbg.raw_items = parsed.items.length;
+      if (!normalized.length) {
+        return res.json({ success: true, imported: 0, posts: [], note: `JSON parsed (${parsed.items.length} items) but no entries produced content. First item keys: ${Object.keys(parsed.items[0] || {}).join(', ') || '—'}`, debug: dbg });
+      }
+      for (let i = 0; i < normalized.length; i += USER_POSTS_SCORE_BATCH) {
+        const batch = normalized.slice(i, i + USER_POSTS_SCORE_BATCH);
+        dbg.batches++;
+        let scores = [];
+        try {
+          const r = await scoreBatch(client, batch);
+          scores = Array.isArray(r) ? r : [];
+        } catch (err) {
+          console.warn('scoreBatch failed:', err.message);
+        }
+        for (let j = 0; j < batch.length; j++) {
+          const p  = batch[j];
+          const sc = scores.find(s => s && s.index === j) || scores[j] || {};
+          const row = {
+            date: p.date, content: p.content, source: p.source || 'manual',
+            imported_ts: Date.now(),
+            hope_score:       typeof sc.hope_score === 'number' ? sc.hope_score : null,
+            war_score:        typeof sc.war_score  === 'number' ? sc.war_score  : null,
+            people_sentiment: sc.people_sentiment || null,
+            summary:          sc.summary || null,
+          };
+          const id = dbm.saveUserPost(row);
+          scored.push({ id, ...row });
+        }
+      }
+    } else {
+      // SLOW PATH: prose / markdown / etc. Single extraction call.
+      dbg.mode = 'prose';
+      const extracted = await extractAndScoreProse(client, text, importDate);
+      dbg.extracted = extracted.length;
+      for (const p of extracted) {
+        if (!p?.content) { dbg.dropped++; continue; }
+        const date = /^\d{4}-\d{2}-\d{2}$/.test(p.date || '') ? p.date : importDate;
+        const row = {
+          date, content: p.content, source: p.source || 'manual',
+          imported_ts: Date.now(),
+          hope_score:       typeof p.hope_score === 'number' ? p.hope_score : null,
+          war_score:        typeof p.war_score  === 'number' ? p.war_score  : null,
+          people_sentiment: p.people_sentiment || null,
+          summary:          p.summary || null,
+        };
+        const id = dbm.saveUserPost(row);
+        scored.push({ id, ...row });
+      }
+    }
+
+    if (!scored.length) {
+      return res.json({ success: true, imported: 0, posts: [], note: 'Nothing was saved. See debug.', debug: dbg });
+    }
+    res.json({ success: true, imported: scored.length, posts: scored, debug: dbg });
+  } catch (err) {
+    console.error('User posts import error:', err.message, dbg);
+    res.status(500).json({ success: false, error: err.message, debug: dbg });
+  }
+});
+
+app.get('/api/user-posts/counts', (req, res) => {
+  try {
+    const counts = dbm.getUserPostDateCounts();
+    res.json({ success: true, counts });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ── REDDIT RSS PULL — fetch subreddit feeds and score through the same pipeline
+const REDDIT_FEEDS_DEFAULT = [
+  'https://www.reddit.com/r/news/.rss',
+  'https://www.reddit.com/r/cryptomarket/.rss',
+  'https://www.reddit.com/r/bitcoin/.rss',
+  'https://www.reddit.com/r/etherium/.rss',
+];
+
+// Reddit aggressively 403s non-browser UAs. rss-parser's internal fetch
+// sometimes gets blocked where axios doesn't (different Accept / missing
+// headers). We use axios + xml2js directly so every header we set actually
+// reaches Reddit, and we get real error bodies on failure.
+const xml2js = require('xml2js');
+
+const REDDIT_BROWSER_HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+  'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+  'Accept-Language': 'en-US,en;q=0.9',
+  'Cache-Control': 'no-cache',
+  'Pragma': 'no-cache',
+  'Sec-Fetch-Dest': 'document',
+  'Sec-Fetch-Mode': 'navigate',
+  'Sec-Fetch-Site': 'none',
+  'Upgrade-Insecure-Requests': '1',
+};
+
+function parseSubredditFromUrl(url) {
+  return (url.match(/\/r\/([^/]+)/) || [])[1] || 'unknown';
+}
+
+// Reddit .rss is an Atom feed — <entry> elements with <title>, <content>, <published>.
+async function parseAtomFeed(xml) {
+  const parser = new xml2js.Parser({ explicitArray: false, ignoreAttrs: false });
+  const out = await parser.parseStringPromise(xml);
+  const entries = out?.feed?.entry;
+  if (!entries) return [];
+  const arr = Array.isArray(entries) ? entries : [entries];
+  return arr.map(e => ({
+    title:     typeof e.title === 'object' ? (e.title._ || '') : (e.title || ''),
+    content:   typeof e.content === 'object' ? (e.content._ || '') : (e.content || ''),
+    published: e.published || e.updated || null,
+  }));
+}
+
+function itemsToPosts(items, subreddit, maxItems) {
+  return (items || []).slice(0, maxItems).map(item => {
+    const title   = (item.title || '').trim();
+    const rawBody = (item.content || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    const snippet = rawBody.slice(0, 600);
+    const content = snippet && snippet !== title ? `${title}\n${snippet}` : title;
+    const pubTs   = item.published ? new Date(item.published).getTime() : Date.now();
+    const date    = new Date(pubTs || Date.now()).toISOString().slice(0, 10);
+    return { content, date, source: `reddit:r/${subreddit}` };
+  }).filter(p => p.content);
+}
+
+function jsonChildrenToPosts(children, subreddit, maxItems) {
+  return (children || []).slice(0, maxItems).map(c => {
+    const d = c.data || {};
+    const title   = (d.title || '').trim();
+    const rawBody = (d.selftext || '').trim();
+    const snippet = rawBody.slice(0, 600);
+    const content = snippet && snippet !== title ? `${title}\n${snippet}` : title;
+    const pubTs   = d.created_utc ? d.created_utc * 1000 : Date.now();
+    const date    = new Date(pubTs).toISOString().slice(0, 10);
+    return { content, date, source: `reddit:r/${subreddit}` };
+  }).filter(p => p.content);
+}
+
+async function fetchRedditFeed(url, maxItems = 15) {
+  const subreddit = parseSubredditFromUrl(url);
+  const attempts = [
+    { label: 'www-rss', url, kind: 'rss' },
+    { label: 'old-rss', url: url.replace('www.reddit.com', 'old.reddit.com'), kind: 'rss' },
+    { label: 'json',    url: `https://www.reddit.com/r/${subreddit}/.json?limit=${maxItems}`, kind: 'json' },
+    { label: 'old-json',url: `https://old.reddit.com/r/${subreddit}/.json?limit=${maxItems}`, kind: 'json' },
+  ];
+
+  const errors = [];
+  for (const a of attempts) {
+    try {
+      const resp = await axios.get(a.url, {
+        headers: REDDIT_BROWSER_HEADERS,
+        timeout: 15000,
+        // Accept any status so we can read 403 bodies; we throw manually below.
+        validateStatus: () => true,
+        responseType: a.kind === 'json' ? 'json' : 'text',
+      });
+      if (resp.status !== 200) {
+        errors.push(`${a.label}:${resp.status}`);
+        continue;
+      }
+      if (a.kind === 'json') {
+        const children = resp.data?.data?.children || [];
+        const posts = jsonChildrenToPosts(children, subreddit, maxItems);
+        if (posts.length) return posts;
+        errors.push(`${a.label}:empty`);
+      } else {
+        const items = await parseAtomFeed(resp.data);
+        const posts = itemsToPosts(items, subreddit, maxItems);
+        if (posts.length) return posts;
+        errors.push(`${a.label}:empty`);
+      }
+    } catch (err) {
+      errors.push(`${a.label}:${err.code || err.message?.slice(0, 40) || 'err'}`);
+    }
+  }
+  const err = new Error(`all endpoints failed (${errors.join(', ')})`);
+  err.statusCode = 403;
+  throw err;
+}
+
+app.post('/api/user-posts/fetch-reddit', async (req, res) => {
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return res.status(503).json({ success: false, error: 'ANTHROPIC_API_KEY not configured' });
+  }
+  const requestedFeeds = Array.isArray(req.body?.feeds) && req.body.feeds.length
+    ? req.body.feeds.filter(u => typeof u === 'string' && u.trim()).map(u => u.trim())
+    : REDDIT_FEEDS_DEFAULT;
+  const maxPerFeed = Math.min(25, Math.max(1, parseInt(req.body?.max_per_feed) || 15));
+  const scoreOn    = req.body?.score !== false;
+
+  const feedResults = [];
+  const allPosts = [];
+  for (const url of requestedFeeds) {
+    try {
+      const posts = await fetchRedditFeed(url, maxPerFeed);
+      feedResults.push({ url, ok: true, fetched: posts.length });
+      allPosts.push(...posts);
+    } catch (err) {
+      const status = err.response?.status || err.statusCode || null;
+      feedResults.push({ url, ok: false, error: err.message, http_status: status });
+    }
+  }
+
+  if (!allPosts.length) {
+    const blocked = feedResults.some(f => !f.ok && (f.http_status === 403 || f.http_status === 429 || /blocked|forbidden|too many/i.test(f.error || '')));
+    return res.json({
+      success: true,
+      feeds: feedResults,
+      fetched: 0,
+      imported: 0,
+      note: blocked
+        ? 'Reddit blocked the requests (403/429). Consider a delay between pulls or a different User-Agent.'
+        : 'No posts fetched — feeds may be empty, typo\'d (e.g. r/etherium vs r/ethereum), or all failed.',
+    });
+  }
+
+  if (!scoreOn) {
+    return res.json({ success: true, feeds: feedResults, fetched: allPosts.length, preview: allPosts.slice(0, 30) });
+  }
+
+  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  const saved = [];
+  for (let i = 0; i < allPosts.length; i += USER_POSTS_SCORE_BATCH) {
+    const batch = allPosts.slice(i, i + USER_POSTS_SCORE_BATCH);
+    let scores = [];
+    try {
+      const r = await scoreBatch(client, batch);
+      scores = Array.isArray(r) ? r : [];
+    } catch (err) {
+      console.warn('scoreBatch (reddit) failed:', err.message);
+    }
+    for (let j = 0; j < batch.length; j++) {
+      const p  = batch[j];
+      const sc = scores.find(s => s && s.index === j) || scores[j] || {};
+      const row = {
+        date: p.date,
+        content: p.content,
+        source: p.source || 'reddit',
+        imported_ts: Date.now(),
+        hope_score:       typeof sc.hope_score === 'number' ? sc.hope_score : null,
+        war_score:        typeof sc.war_score  === 'number' ? sc.war_score  : null,
+        people_sentiment: sc.people_sentiment || null,
+        summary:          sc.summary || null,
+      };
+      const id = dbm.saveUserPost(row);
+      saved.push({ id, ...row });
+    }
+  }
+
+  res.json({ success: true, feeds: feedResults, fetched: allPosts.length, imported: saved.length });
 });
 
 // ── 7-DAY AI FORECAST — Claude pattern-completion engine ──────────────────
@@ -1092,6 +1646,171 @@ app.get('/api/admin/stats', (req, res) => {
   }
 });
 
+// ── ADMIN: posts + RSS stats (imported user_posts + today's sentiment/flow)
+app.get('/api/admin/posts-stats', (req, res) => {
+  try {
+    const now = Date.now();
+    const today      = new Date(now).toISOString().slice(0, 10);
+    const sevenAgo   = new Date(now - 7 * 86400000).toISOString().slice(0, 10);
+    const yesterday  = new Date(now - 1 * 86400000).toISOString().slice(0, 10);
+
+    const allPosts = dbm.getUserPostsRange(sevenAgo, today);
+    const todayPosts = allPosts.filter(p => p.date === today);
+
+    const summarize = (posts) => {
+      const hopes  = posts.map(p => p.hope_score).filter(n => typeof n === 'number');
+      const wars   = posts.map(p => p.war_score).filter(n => typeof n === 'number');
+      const sents  = { bullish: 0, bearish: 0, neutral: 0, mixed: 0, other: 0 };
+      for (const p of posts) {
+        const s = (p.people_sentiment || '').toLowerCase();
+        if      (s.includes('bull'))   sents.bullish++;
+        else if (s.includes('bear') || s.includes('fear') || s.includes('panic')) sents.bearish++;
+        else if (s.includes('neutral')) sents.neutral++;
+        else if (s.includes('mixed'))   sents.mixed++;
+        else                            sents.other++;
+      }
+      const sourceMap = {};
+      for (const p of posts) {
+        const src = p.source || 'manual';
+        sourceMap[src] = (sourceMap[src] || 0) + 1;
+      }
+      const top_sources = Object.entries(sourceMap)
+        .map(([name, count]) => ({ name, count }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 6);
+      const avg = (arr) => arr.length ? +(arr.reduce((s, v) => s + v, 0) / arr.length).toFixed(1) : null;
+      return {
+        post_count:   posts.length,
+        hope_avg:     avg(hopes),
+        war_avg:      avg(wars),
+        sentiment:    sents,
+        bull_bear_ratio: (sents.bullish + sents.bearish) > 0
+          ? +(sents.bullish / (sents.bullish + sents.bearish)).toFixed(2) : null,
+        top_sources,
+      };
+    };
+
+    const todayStats = summarize(todayPosts);
+    const weekStats  = summarize(allPosts);
+
+    // Daily sentiment layer (NewsAPI-scored days).
+    const sentRows = dbm.getSentimentRange(sevenAgo, today);
+    const todayRow = sentRows.find(r => r.date === today) || null;
+    const hopeVals  = sentRows.map(r => r.hope_score).filter(n => typeof n === 'number');
+    const macroVals = sentRows.map(r => r.macro_score).filter(n => typeof n === 'number');
+    const sentAvg = (arr) => arr.length ? +(arr.reduce((s, v) => s + v, 0) / arr.length).toFixed(1) : null;
+    const daily_sentiment = {
+      today: todayRow ? {
+        verdict:     todayRow.verdict,
+        hope_score:  todayRow.hope_score,
+        macro_score: todayRow.macro_score,
+        eth_move_pct: todayRow.eth_move_pct,
+      } : null,
+      week_avg: {
+        hope_score:  sentAvg(hopeVals),
+        macro_score: sentAvg(macroVals),
+        bullish_days: sentRows.filter(r => r.verdict === 'bullish').length,
+        bearish_days: sentRows.filter(r => r.verdict === 'bearish').length,
+        neutral_days: sentRows.filter(r => r.verdict === 'neutral').length,
+      },
+    };
+
+    // Headline counts per category.
+    const headlineCounts = { today: {}, week: {} };
+    for (const cat of ['crypto', 'macro', 'hope']) {
+      headlineCounts.today[cat] = dbm.countHeadlines(today, cat);
+      let weekSum = 0;
+      for (let i = 0; i < 7; i++) {
+        const d = new Date(now - i * 86400000).toISOString().slice(0, 10);
+        weekSum += dbm.countHeadlines(d, cat);
+      }
+      headlineCounts.week[cat] = weekSum;
+    }
+
+    // Order flow (last 24h and last 7d).
+    const flow24h = dbm.getTradeSummary(now - 24 * 60 * 60 * 1000);
+    const flow7d  = dbm.getTradeSummary(now -  7 * 24 * 60 * 60 * 1000);
+    const flowDigest = (s) => ({
+      buy_vol:  Math.round(s.buy_vol  * 100) / 100,
+      sell_vol: Math.round(s.sell_vol * 100) / 100,
+      buy_count: s.buy_count,
+      sell_count: s.sell_count,
+      ratio: (s.buy_vol + s.sell_vol) > 0
+        ? +(s.buy_vol / (s.buy_vol + s.sell_vol)).toFixed(3) : null,
+      net_pressure: (s.buy_vol + s.sell_vol) > 0
+        ? (s.buy_vol > s.sell_vol ? 'buy' : (s.sell_vol > s.buy_vol ? 'sell' : 'even')) : null,
+    });
+
+    res.json({
+      success: true,
+      today:    { ...todayStats, daily_sentiment: daily_sentiment.today, headlines: headlineCounts.today, flow: flowDigest(flow24h) },
+      last_7d:  { ...weekStats,  daily_sentiment: daily_sentiment.week_avg, headlines: headlineCounts.week, flow: flowDigest(flow7d) },
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ── ADMIN: MASTER PREDICT — senior-strategist daily report ───────────────
+app.post('/api/admin/master-predict', async (req, res) => {
+  try {
+    const data = await masterpredict.runMasterPredict();
+    res.json({ success: true, data });
+  } catch (err) {
+    console.error('Master predict error:', err.message);
+    res.status(502).json({ success: false, error: err.message });
+  }
+});
+
+// SSE variant — holds the connection open with keepalive pings so the browser
+// never times out on long Opus runs (3-8 min). Client uses EventSource.
+app.get('/api/admin/master-predict-stream', async (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no'); // disable nginx buffering if proxied
+  res.flushHeaders();
+
+  const send = (obj) => res.write(`data: ${JSON.stringify(obj)}\n\n`);
+  const startTs = Date.now();
+
+  // Ping every 10s so proxies/browsers keep the socket alive during the long
+  // Opus generation. Each ping tells the client how many seconds have elapsed.
+  const ping = setInterval(() => {
+    send({ tick: true, elapsed_sec: Math.round((Date.now() - startTs) / 1000) });
+  }, 10000);
+
+  send({ phase: 'starting', elapsed_sec: 0 });
+
+  try {
+    const data = await masterpredict.runMasterPredict();
+    send({ done: true, elapsed_sec: Math.round((Date.now() - startTs) / 1000), data });
+  } catch (err) {
+    console.error('Master predict SSE error:', err.message);
+    send({ error: err.message });
+  } finally {
+    clearInterval(ping);
+    res.end();
+  }
+});
+
+app.get('/api/admin/master-predict/latest', (req, res) => {
+  try {
+    const rows = dbm.getPredictions(5, 'master_report');
+    const reports = rows.map(r => ({
+      id: r.id,
+      created_ts: r.created_ts,
+      eth_price_at_prediction: r.eth_price_at_prediction,
+      predicted_direction: r.predicted_direction,
+      confidence: r.confidence,
+      raw_result: r.raw_result,
+    }));
+    res.json({ success: true, reports });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // ── ADMIN: run new AI forecast (force) ───────────────────────────────────
 app.post('/api/admin/run-forecast', async (req, res) => {
   const historyDays = Math.max(7, Math.min(90, parseInt(req.body?.history_days) || 90));
@@ -1115,6 +1834,31 @@ app.get('/api/admin/run-combined-forecast', async (req, res) => {
 
   try {
     const result = await forecast.buildCombinedForecast({
+      onProgress: (p) => send(p),
+    });
+    send({ done: true, pct: 100, result });
+  } catch (err) {
+    send({ error: err.message });
+  } finally {
+    res.end();
+  }
+});
+
+// ── ADMIN: Opus max-layers forecast (SSE streaming) ──────────────────────
+// Same pipeline as combined, but uses claude-opus-4-7 for every sub-run and
+// the synthesis, and adds a 5th 90-day layer for deeper macro context.
+app.get('/api/admin/run-opus-forecast', async (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
+
+  const send = (obj) => res.write(`data: ${JSON.stringify(obj)}\n\n`);
+
+  try {
+    const result = await forecast.buildCombinedForecast({
+      model: 'claude-opus-4-7',
+      windows: [7, 15, 30, 60, 90],
       onProgress: (p) => send(p),
     });
     send({ done: true, pct: 100, result });
@@ -1258,9 +2002,29 @@ async function warmCaches() {
   })();
 }
 
+// ── TODAY-SENTIMENT HOURLY TIMER ────────────────────────────────────────
+// The only server-side auto-AI cadence. Refreshes today's verdict / hope /
+// macro every hour so /api/monthly-sentiment and forecast-context queries
+// always see a current row for today. Persists to daily_sentiment so it
+// feeds every downstream prediction.
+const TODAY_SENTIMENT_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
+
+async function refreshTodaySentiment() {
+  try {
+    await buildTodaySentiment(cgGet, 'usd');
+    console.log(`[today-sentiment] refreshed @ ${new Date().toISOString()}`);
+  } catch (err) {
+    console.warn('[today-sentiment] refresh failed:', err.message);
+  }
+}
+
 app.listen(PORT, () => {
   console.log(`ETH Price Tracker running → http://localhost:${PORT}`);
   hydrateDiskCache();
   warmCaches();
   orderflow.start();
+
+  // First run after 60s so the server has finished warming caches.
+  setTimeout(refreshTodaySentiment, 60 * 1000);
+  setInterval(refreshTodaySentiment, TODAY_SENTIMENT_INTERVAL_MS);
 });

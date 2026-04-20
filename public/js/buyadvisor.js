@@ -29,25 +29,37 @@ function setList(id, items) {
 }
 
 let latestRec = null;
+let isAdviceStale = false;
+
+const ADVICE_STALE_MS = 2 * 60 * 60 * 1000; // 2 hours — chip falls back to HODL and the popup is disabled when advice is older than this.
 
 function paintAdvisor(d) {
   latestRec = d;
   if (!d) return;
-  const verdict = (d.verdict || 'hodl').toLowerCase();
+  const rawVerdict = (d.verdict || 'hodl').toLowerCase();
+  const isStale = !!(d.generated_ts && (Date.now() - d.generated_ts) > ADVICE_STALE_MS);
+  isAdviceStale = isStale;
+  // Chip shows HODL when advice is older than 2h — stale signals are unsafe to act on.
+  const chipVerdict = isStale ? 'hodl' : rawVerdict;
 
   // Compact chip
   const chip = document.getElementById('buyChip');
-  chip.classList.remove('verdict-buy', 'verdict-hodl', 'verdict-sell');
-  chip.classList.add(`verdict-${verdict}`);
-  document.getElementById('baVerdict').textContent = verdict.toUpperCase();
-  document.getElementById('baConfidence').textContent =
-    typeof d.confidence === 'number' ? `${Math.round(d.confidence * 100)}%` : '—';
+  if (chip) {
+    chip.classList.remove('verdict-buy', 'verdict-hodl', 'verdict-sell');
+    chip.classList.add(`verdict-${chipVerdict}`);
+    chip.classList.toggle('advice-stale', isStale);
+    chip.title = isStale ? 'Advice is older than 2h — no fresh AI prediction available' : '';
+  }
+  const verdictEl = document.getElementById('baVerdict');
+  if (verdictEl) verdictEl.textContent = isStale ? 'HODL' : rawVerdict.toUpperCase();
+  const confEl = document.getElementById('baConfidence');
+  if (confEl) confEl.textContent = isStale ? 'stale' : (typeof d.confidence === 'number' ? `${Math.round(d.confidence * 100)}%` : '—');
 
   // Modal (in case it's already open)
   const modalVerdict = document.getElementById('baModalVerdict');
   if (modalVerdict) {
-    modalVerdict.textContent = verdict.toUpperCase();
-    modalVerdict.className = `ba-modal-verdict verdict-${verdict}`;
+    modalVerdict.textContent = rawVerdict.toUpperCase();
+    modalVerdict.className = `ba-modal-verdict verdict-${rawVerdict}`;
   }
   const tf = document.getElementById('baTimeframe');
   if (tf)    tf.textContent = d.timeframe || '—';
@@ -100,6 +112,7 @@ async function refreshAdvisor({ force = false } = {}) {
 }
 
 function openBuyModal() {
+  if (isAdviceStale) return; // Stale advice (>2h old) is non-actionable — suppress the popup entirely.
   document.getElementById('buyModal').style.display = 'flex';
   if (latestRec) paintAdvisor(latestRec); // ensure modal is painted
 }
@@ -107,9 +120,27 @@ function closeBuyModal() {
   document.getElementById('buyModal').style.display = 'none';
 }
 
+// Poll /api/buy-time-ts every 30s to detect when admin pushes a new Opus
+// result — only triggers a full refresh when the timestamp actually changes.
+let lastKnownTs = null;
+async function pollAdvisorTs() {
+  try {
+    const res  = await fetch('/api/buy-time-ts');
+    const json = await res.json();
+    if (json.ts && json.ts !== lastKnownTs) {
+      lastKnownTs = json.ts;
+      await refreshAdvisor(); // fetch the new recommendation and repaint
+    }
+  } catch {}
+}
+
 document.addEventListener('DOMContentLoaded', () => {
-  refreshAdvisor();
-  setInterval(refreshAdvisor, 5 * 60 * 1000);
+  // Initial load — fetch once from server cache/DB, no Claude call.
+  refreshAdvisor().then(() => { lastKnownTs = latestRec?.generated_ts ?? null; });
+  // Only re-fetch if admin has pushed a new result (ts changed).
+  setInterval(pollAdvisorTs, 30 * 1000);
+  // Re-evaluate staleness every minute so chip flips to HODL automatically.
+  setInterval(() => { if (latestRec) paintAdvisor(latestRec); }, 60 * 1000);
   // Tick the live price every 5s on the chip / open modal.
   setInterval(updateLivePrice, 5000);
 

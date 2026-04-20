@@ -1,6 +1,6 @@
-# ETHWATCH v1.2 — Live Ethereum Tracker + Intelligence Platform
+# ETHWATCH v1.3 — Live Ethereum Tracker + Intelligence Platform
 
-Real-time ETH price tracker with candlestick charts, pattern recognition, live order flow, news sentiment with per-day AI verdicts, saved **Oracle** marker sets with Claude prophecy, 7-day AI forecast engine, ETHWEATHER climate dashboard, admin intelligence panel, four themes, and persistent user preferences.
+Real-time ETH price tracker with candlestick charts, pattern recognition, live order flow, news sentiment with per-day AI verdicts, saved **Oracle** marker sets with Claude prophecy, 7-day AI forecast engine, **Master Predict daily report (Opus streaming)**, **Reddit RSS pull + user post scoring**, ETHWEATHER climate dashboard, admin intelligence panel, four themes, and persistent user preferences.
 
 ## Quick Start
 

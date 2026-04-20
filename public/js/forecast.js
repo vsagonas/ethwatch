@@ -154,12 +154,13 @@ function closeForecastModal() {
 
 function setAsActivePrediction(data, { persistPref = true } = {}) {
   const tagged = { ...data, __kind: 'forecast7d' };
-  const wasActive = !!window.activePrediction;
   window.activePredictionSetId = '__forecast7d__';
   window.activePrediction = tagged;
   updateBtnActiveClass(true);
   if (persistPref) saveOverlayPref(true);
-  if (!wasActive && window.state?.days === 7 && window.state?.historyData) {
+  // Always rebuild the line chart on 1W so pan limits extend 8d into the
+  // forecast region. renderPredictionOverlay alone can't extend pan limits.
+  if (window.state?.days === 7 && window.state?.historyData) {
     window.buildPriceChart?.(window.state.historyData);
   } else {
     window.renderPredictionOverlay?.({ focus: false });
@@ -187,6 +188,36 @@ function clearActiveForecast({ persistPref = true } = {}) {
 // all .day-col nodes. Click → popup with narrative + reasoning for that day.
 function removeForecastDayCards() {
   document.querySelectorAll('.day-col.forecast-col').forEach(el => el.remove());
+}
+
+// Scroll whichever chart is active so `targetTs` is centered in view.
+// Pairs with the forecast day tiles — clicking D3 re-centers the chart on D3.
+function scrollChartToTs(targetTs) {
+  // Candle chart (LW Charts)
+  const lw = window.lwChartApi;
+  if (lw?.timeScale) {
+    try {
+      const r = lw.timeScale().getVisibleRange();
+      if (r?.from && r?.to) {
+        const half = (r.to - r.from) / 2;
+        const t = Math.round(targetTs / 1000);
+        lw.timeScale().setVisibleRange({ from: t - half, to: t + half });
+        window.positionCandleStrip?.();
+        return;
+      }
+    } catch {}
+  }
+  // Line chart (Chart.js)
+  const pc = window.priceChart;
+  if (pc?.scales?.x) {
+    const cur = pc.scales.x;
+    const span = cur.max - cur.min;
+    const half = span / 2;
+    try {
+      pc.zoomScale?.('x', { min: targetTs - half, max: targetTs + half }, 'none');
+      window.positionStripOnChart?.(pc);
+    } catch {}
+  }
 }
 
 function renderForecastDayCards(forecast) {
@@ -238,13 +269,16 @@ function renderForecastDayCards(forecast) {
     `;
     col.addEventListener('click', (e) => {
       e.stopPropagation();
+      // Scroll the chart so the clicked forecast day is centered in view.
+      scrollChartToTs(dayTs);
       openForecastDayPopup(forecast, d.day);
     });
     strip.appendChild(col);
   });
 
-  // Scroll to today so forecast tiles are visible to the right.
-  window.scrollStripToToday?.();
+  // Reposition all tiles (including the new forecast cols) at their chart-x.
+  window.positionStripOnChart?.();
+  window.positionCandleStrip?.();
 }
 // Expose so monthly.js can re-inject after renderStrip rebuilds the DOM.
 window.renderForecastDayCards = renderForecastDayCards;
@@ -309,6 +343,12 @@ async function runForecast({ force = false } = {}) {
     setBtnBusy(false);
   }
 }
+
+// Public: re-attach the saved/live 7-day forecast as the active prediction.
+// Called after clearing Oracle marks so the default forecast overlay returns.
+window.restoreSavedForecastOverlay = function restoreSavedForecastOverlay() {
+  restoreSavedForecast();
+};
 
 // Restore any persisted forecast — always auto-activate the overlay.
 // If no saved forecast, fetch from server silently.

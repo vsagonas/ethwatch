@@ -142,9 +142,16 @@ db.exec(`
     ts INTEGER PRIMARY KEY,
     verdict TEXT,
     confidence REAL,
+    source TEXT DEFAULT 'sonnet',
     data TEXT NOT NULL
   );
 `);
+
+// Migration: add source column to buy_recommendations if missing.
+try {
+  db.exec(`ALTER TABLE buy_recommendations ADD COLUMN source TEXT DEFAULT 'sonnet'`);
+} catch {}
+
 
 // Binance aggregated trades — persisted forever so we always have a 5m
 // trend available to new browser sessions without waiting 5 min of live data.
@@ -601,16 +608,95 @@ function getLatestVitals() {
   return row ? JSON.parse(row.data) : null;
 }
 
-const insertBuyRecStmt = db.prepare('INSERT OR IGNORE INTO buy_recommendations (ts, verdict, confidence, data) VALUES (?, ?, ?, ?)');
-function saveBuyRecommendation(rec) {
+const insertBuyRecStmt = db.prepare('INSERT OR IGNORE INTO buy_recommendations (ts, verdict, confidence, source, data) VALUES (?, ?, ?, ?, ?)');
+function saveBuyRecommendation(rec, source = 'sonnet') {
   const ts = rec?.generated_ts || Date.now();
-  insertBuyRecStmt.run(ts, rec?.verdict ?? null, rec?.confidence ?? null, JSON.stringify(rec));
+  insertBuyRecStmt.run(ts, rec?.verdict ?? null, rec?.confidence ?? null, source, JSON.stringify(rec));
 }
 const latestBuyRecStmt = db.prepare('SELECT data FROM buy_recommendations ORDER BY ts DESC LIMIT 1');
 function getLatestBuyRecommendation() {
   const row = latestBuyRecStmt.get();
   return row ? JSON.parse(row.data) : null;
 }
+const latestOpusBuyRecStmt = db.prepare("SELECT data FROM buy_recommendations WHERE source='opus' ORDER BY ts DESC LIMIT 1");
+function getLatestOpusBuyRecommendation() {
+  const row = latestOpusBuyRecStmt.get();
+  return row ? JSON.parse(row.data) : null;
+}
+const buyRecHistoryStmt = db.prepare('SELECT ts, verdict, confidence, source, data FROM buy_recommendations ORDER BY ts DESC LIMIT ?');
+function getBuyRecommendationHistory(limit = 1000) {
+  return buyRecHistoryStmt.all(limit).map(r => {
+    let parsed = null;
+    try { parsed = JSON.parse(r.data); } catch {}
+    return {
+      ts: r.ts, verdict: r.verdict, confidence: r.confidence, source: r.source,
+      headline:          parsed?.headline          ?? null,
+      macro_context:     parsed?.macro_context     ?? null,
+      forecast_alignment: parsed?.forecast_alignment ?? null,
+      pros:              parsed?.pros              ?? [],
+      cons:              parsed?.cons              ?? [],
+      risks:             parsed?.risks             ?? [],
+      timeframe:         parsed?.timeframe         ?? null,
+      entry_zone:        parsed?.entry_zone        ?? null,
+      model:             parsed?.model             ?? null,
+      prompt:            parsed?.prompt            ?? null,
+    };
+  });
+}
+const deleteBuyRecStmt = db.prepare('DELETE FROM buy_recommendations WHERE ts = ?');
+function deleteBuyRecommendation(ts) { return deleteBuyRecStmt.run(ts).changes; }
+
+const latestOpusMaxForecastStmt = db.prepare(
+  `SELECT raw_result FROM prediction_history WHERE type='ai_forecast' AND source_ref LIKE 'opus-max:%' ORDER BY created_ts DESC LIMIT 1`
+);
+function getLatestOpusMaxForecast() {
+  const row = latestOpusMaxForecastStmt.get();
+  if (!row) return null;
+  try { return JSON.parse(row.raw_result); } catch { return null; }
+}
+
+// ── User Posts ─────────────────────────────────────────────────────────────
+db.exec(`
+  CREATE TABLE IF NOT EXISTS user_posts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    date TEXT NOT NULL,
+    content TEXT NOT NULL,
+    source TEXT DEFAULT 'manual',
+    imported_ts INTEGER NOT NULL,
+    hope_score REAL,
+    war_score REAL,
+    people_sentiment TEXT,
+    summary TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_user_posts_date ON user_posts(date);
+`);
+
+const insertUserPostStmt = db.prepare(`
+  INSERT INTO user_posts (date, content, source, imported_ts, hope_score, war_score, people_sentiment, summary)
+  VALUES (@date, @content, @source, @imported_ts, @hope_score, @war_score, @people_sentiment, @summary)
+`);
+function saveUserPost(p) {
+  return insertUserPostStmt.run({
+    date: p.date,
+    content: p.content,
+    source: p.source ?? 'manual',
+    imported_ts: p.imported_ts ?? Date.now(),
+    hope_score: p.hope_score ?? null,
+    war_score: p.war_score ?? null,
+    people_sentiment: p.people_sentiment ?? null,
+    summary: p.summary ?? null,
+  }).lastInsertRowid;
+}
+
+const getUserPostsRangeStmt = db.prepare(
+  `SELECT * FROM user_posts WHERE date BETWEEN ? AND ? ORDER BY date ASC`
+);
+function getUserPostsRange(from, to) { return getUserPostsRangeStmt.all(from, to); }
+
+const countUserPostsByDateStmt = db.prepare(
+  `SELECT date, COUNT(*) as count FROM user_posts GROUP BY date ORDER BY date DESC`
+);
+function getUserPostDateCounts() { return countUserPostsByDateStmt.all(); }
 
 module.exports = {
   db,
@@ -622,6 +708,7 @@ module.exports = {
   savePriceSnapshot, saveHourlyPrices, saveDailyOhlc, getDailyOhlcRange,
   insertTradesBatch, getTradeSummary,
   saveMarketVitals, getLatestVitals,
-  saveBuyRecommendation, getLatestBuyRecommendation,
+  saveBuyRecommendation, getLatestBuyRecommendation, getLatestOpusBuyRecommendation, getBuyRecommendationHistory, deleteBuyRecommendation, getLatestOpusMaxForecast,
   savePrediction, getPredictions, deletePrediction, resolvePrediction, getUnresolvedPredictions,
+  saveUserPost, getUserPostsRange, getUserPostDateCounts,
 };

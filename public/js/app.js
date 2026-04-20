@@ -1070,6 +1070,68 @@ function _offsetMsOf(p) {
   return 0;
 }
 
+// Opus sometimes returns a 7-day trajectory with fewer than 28 six-hourly
+// points (missing hours → visual gaps that can drop a whole day's shape on
+// the candle chart). Fill every missing offset_hour ∈ {6,12,…,168} by linear
+// interpolation between the nearest known neighbors so the forecast line has
+// a datapoint for every 6 hours of the 7-day window. Also weaves in the
+// daily_breakdown end-of-day price (offset_hours = day*24) if the forecast
+// provided it — keeps each day's shape anchored even when the raw trajectory
+// is sparse. Only applied to the candle-chart path; line chart path is
+// untouched per user request.
+function _fillForecastTrajectory(prophecy) {
+  const trajIn = Array.isArray(prophecy?.trajectory) ? prophecy.trajectory : [];
+  if (!trajIn.length) return trajIn;
+
+  // Filter to hourly-based points (ignore offset_days-only entries — those
+  // go through a different code path for Oracle).
+  const hourly = trajIn.filter(p => typeof p.offset_hours === 'number');
+  if (!hourly.length) return trajIn;
+
+  const byHour = new Map();
+  for (const p of hourly) byHour.set(Math.round(p.offset_hours), p);
+
+  // Weave daily_breakdown end-of-day prices into the hour grid at 24,48,...
+  // Only fills slots missing from the raw trajectory — doesn't overwrite.
+  const breakdown = Array.isArray(prophecy.daily_breakdown) ? prophecy.daily_breakdown : [];
+  if (breakdown.length && prophecy.anchor_price != null && isFinite(prophecy.anchor_price)) {
+    let compound = prophecy.anchor_price;
+    for (const d of breakdown) {
+      if (typeof d.day !== 'number' || typeof d.expected_move_pct !== 'number') continue;
+      compound = compound * (1 + d.expected_move_pct / 100);
+      const h = d.day * 24;
+      if (!byHour.has(h)) byHour.set(h, { offset_hours: h, expected_eth_price: compound });
+    }
+  }
+
+  // Build the complete 6,12,...,168 grid, interpolating gaps.
+  const out = [];
+  const allHours = [];
+  for (let h = 6; h <= 168; h += 6) allHours.push(h);
+  for (const h of allHours) {
+    if (byHour.has(h)) { out.push(byHour.get(h)); continue; }
+    // Find nearest known neighbors on either side.
+    let prev = null, next = null;
+    for (let ph = h - 6; ph >= 6; ph -= 6) if (byHour.has(ph)) { prev = byHour.get(ph); break; }
+    for (let nh = h + 6; nh <= 168; nh += 6) if (byHour.has(nh)) { next = byHour.get(nh); break; }
+    if (prev && next) {
+      const t = (h - prev.offset_hours) / (next.offset_hours - prev.offset_hours);
+      const interp = {
+        offset_hours: h,
+        expected_eth_price: prev.expected_eth_price + (next.expected_eth_price - prev.expected_eth_price) * t,
+      };
+      if (prev.low != null && next.low != null)   interp.low  = prev.low  + (next.low  - prev.low)  * t;
+      if (prev.high != null && next.high != null) interp.high = prev.high + (next.high - prev.high) * t;
+      out.push(interp);
+    } else if (prev) {
+      out.push({ ...prev, offset_hours: h });
+    } else if (next) {
+      out.push({ ...next, offset_hours: h });
+    }
+  }
+  return out.length >= hourly.length ? out : trajIn;
+}
+
 window.renderPredictionOverlay = function renderPredictionOverlay({ focus = false } = {}) {
   const prophecy = window.activePrediction;
 
@@ -1200,23 +1262,80 @@ window.renderPredictionOverlay = function renderPredictionOverlay({ focus = fals
         title: prophecy.__kind === 'forecast7d' ? '7d forecast' : 'Oracle',
         crosshairMarkerVisible: true,
       });
-      // Strip any trajectory points that fall BEFORE or AT the last candle —
-      // they'd overlap with real OHLC that already happened. The dashed line
-      // starts from the last candle's close so it visually connects cleanly.
-      const data = prophecy.trajectory
-        .map(p => ({ time: Math.floor((forecastAnchorMs + _offsetMsOf(p)) / 1000), value: p.expected_eth_price }))
-        .filter(p => p.time * 1000 > lastCandleMs)
-        .sort((a, b) => a.time - b.time);
-      if (!data.length) return;
-      if (lastCandleClose != null) {
-        data.unshift({ time: Math.floor(lastCandleMs / 1000), value: lastCandleClose });
+      // Lightweight Charts uses BAR-based x-axis spacing: each unique time
+      // value is one equal-width slot, irrespective of wall-clock gap. The
+      // only way to get time-proportional layout is to match the forecast's
+      // bar count + interval to the OHLC bars. For 1W range CoinGecko returns
+      // 4-hourly OHLC (~42 bars over 7 days), for 1M range it's daily (~30).
+      //
+      // Solution: detect OHLC bar interval, then generate forecast points at
+      // THAT SAME INTERVAL over the 7-day forecast window. Equal bars per day
+      // on both sides → history + forecast split the chart 50/50 regardless
+      // of range selection. Line chart path is untouched.
+      const intervalSec = ohlc.length >= 2
+        ? Math.max(1, Math.round((ohlc[ohlc.length - 1].time - ohlc[0].time) / (ohlc.length - 1)))
+        : 14400; // default to 4h if we can't infer
+
+      // Fill the raw 28-point 6h trajectory + weave in daily_breakdown anchors,
+      // then sort by wall-clock ms. Used as the interpolation basis.
+      const filledTraj = _fillForecastTrajectory(prophecy);
+      const basis = filledTraj
+        .map(p => ({ ms: forecastAnchorMs + _offsetMsOf(p), price: p.expected_eth_price }))
+        .filter(p => p.ms > lastCandleMs)
+        .sort((a, b) => a.ms - b.ms);
+      if (!basis.length) return;
+
+      // Resample at the OHLC interval from (lastCandle + interval) through
+      // the last forecast point. Price is linearly interpolated from basis.
+      const intervalMs = intervalSec * 1000;
+      const basisLastMs  = basis[basis.length - 1].ms;
+      const basisLastPrc = basis[basis.length - 1].price;
+      const basisFirstMs  = basis[0].ms;
+      const basisFirstPrc = basis[0].price;
+      const priceAt = (t) => {
+        if (t <= basisFirstMs) return basisFirstPrc;
+        if (t >= basisLastMs)  return basisLastPrc;
+        for (let i = 0; i < basis.length - 1; i++) {
+          const a = basis[i], b = basis[i + 1];
+          if (t >= a.ms && t <= b.ms) {
+            const f = b.ms === a.ms ? 0 : (t - a.ms) / (b.ms - a.ms);
+            return a.price + (b.price - a.price) * f;
+          }
+        }
+        return basisLastPrc;
+      };
+
+      const deduped = [];
+      let lastTime = -Infinity;
+      for (let t = lastCandleMs + intervalMs; t <= basisLastMs; t += intervalMs) {
+        const sec = Math.floor(t / 1000);
+        if (sec > lastTime) {
+          deduped.push({ time: sec, value: priceAt(t) });
+          lastTime = sec;
+        }
       }
-      series.setData(data);
+      // Always include the final forecast point so the line ends at D7's value.
+      {
+        const finalSec = Math.floor(basisLastMs / 1000);
+        if (finalSec > lastTime) {
+          deduped.push({ time: finalSec, value: basisLastPrc });
+        }
+      }
+      if (!deduped.length) return;
+      if (lastCandleClose != null) {
+        deduped.unshift({ time: Math.floor(lastCandleMs / 1000), value: lastCandleClose });
+      }
+      series.setData(deduped);
       window._predSeries = series;
 
-      if (focus && data.length > 1) {
-        const firstT = data[0].time;
-        const lastT  = data[data.length - 1].time;
+      // Refit the visible range to include OHLC + the 7 forecast bars. With
+      // both series at daily granularity, Lightweight Charts now gives them
+      // equal bar widths — 7 history bars + 7 forecast bars = 50/50 split.
+      try { lw.timeScale().fitContent(); } catch {}
+
+      if (focus && deduped.length > 1) {
+        const firstT = deduped[0].time;
+        const lastT  = deduped[deduped.length - 1].time;
         const span   = lastT - firstT;
         const pad    = Math.max(Math.round(span * 0.4), 2 * 86400);
         try {

@@ -166,59 +166,120 @@ function renderStrip(days, currency) {
     window.renderForecastDayCards?.(window.activePrediction);
   }
 
-  // Scroll strip to show TODAY card.
-  scrollStripToToday();
+  // Align every tile to the chart's pixel x coordinates.
+  positionStripOnChart();
+  positionCandleStrip();
 }
 
-// Scroll the strip so TODAY card is near the right side of the visible area.
-// Forecast tiles come after today (to the right), scrollable on demand.
-function scrollStripToToday() {
-  const strip = document.getElementById('monthStrip');
-  if (!strip) return;
-  const todayCol = strip.querySelector('.today-col');
-  if (todayCol) {
-    // Place today 2 cards from the right edge so the user can see what's just before.
-    const cardWidth = (todayCol.offsetWidth || 106) + 6;
-    strip.scrollLeft = Math.max(0, todayCol.offsetLeft - strip.clientWidth + cardWidth * 2);
-  } else {
-    // No today card — scroll to the end to show most recent history.
-    strip.scrollLeft = strip.scrollWidth;
-  }
-}
+// No-op kept for backward-compat (absolute positioning removes the need to
+// scroll — each card is placed at its chart-x pixel coordinate directly).
+function scrollStripToToday() { /* no-op */ }
 window.scrollStripToToday = scrollStripToToday;
 
-// Sync strip scroll to the visible left edge of the line chart (Chart.js).
-function positionStripOnChart(chart) {
-  chart = chart || window.priceChart || null;
-  if (!chart) chart = (typeof priceChart !== 'undefined' ? priceChart : null);
-  if (!chart?.scales?.x) return;
-  const leftTs = chart.scales.x.min;
-  if (isFinite(leftTs)) syncStripScroll(leftTs);
+function _isCandleMode() {
+  return !!document.querySelector('.chart-type-btn[data-type="candles"]')?.classList.contains('active');
 }
 
-// Sync strip scroll to the visible left edge of the candle chart (LW Charts).
-function positionCandleStrip() {
-  const chart = window.lwChartApi;
-  if (!chart || typeof chart.timeScale !== 'function') return;
-  const range = chart.timeScale().getVisibleRange();
-  if (range?.from) syncStripScroll(range.from * 1000);
-}
-
-// Scroll the strip so the card nearest to leftTs is at the left edge.
-function syncStripScroll(leftTs) {
+// ONE shared layout. Both line AND candle modes hook tiles to the active
+// chart's NATIVE time-to-pixel function, so each card sits directly above
+// its date on the chart axis. Re-runs on pan/zoom (afterRender for line,
+// subscribeVisibleTimeRangeChange for candle) → cards drag with the chart.
+// Tiles whose date falls outside the chart's visible range are hidden so
+// nothing overflows the chart border.
+function _layoutStrip() {
   const strip = document.getElementById('monthStrip');
   if (!strip) return;
-  const cols = [...strip.querySelectorAll('.day-col')];
-  if (!cols.length) return;
-  let bestCol = null, bestDiff = Infinity;
-  cols.forEach(col => {
-    const ts = parseInt(col.dataset.ts);
-    if (!isFinite(ts)) return;
-    const diff = Math.abs(ts - leftTs);
-    if (diff < bestDiff) { bestDiff = diff; bestCol = col; }
-  });
-  if (bestCol) strip.scrollLeft = Math.max(0, bestCol.offsetLeft - 6);
+
+  let getPx = null;
+  let minBound = -50;
+  let maxBound = Infinity;
+
+  if (_isCandleMode()) {
+    // Candle: Lightweight Charts. timeToCoordinate returns pixel-x (relative
+    // to #lwChart's left edge, which matches the strip's left edge because
+    // both are width:100% of .chart-wrapper). Returns null for timestamps
+    // beyond loaded data → extrapolate linearly from known bar positions.
+    const lw = window.lwChartApi;
+    const container = document.getElementById('lwChart');
+    if (!lw || !container) return;
+    const tsAxis = lw.timeScale();
+    maxBound = container.offsetWidth + 50;
+
+    const known = [];
+    strip.querySelectorAll('.day-col').forEach(col => {
+      const tms = parseInt(col.dataset.ts);
+      if (!isFinite(tms)) return;
+      const px = tsAxis.timeToCoordinate(Math.round(tms / 1000));
+      if (px != null) known.push({ tms, px });
+    });
+    known.sort((a, b) => a.tms - b.tms);
+    const first = known[0] || null;
+    const last  = known[known.length - 1] || null;
+    let pxPerMs = null;
+    if (first && last && last.tms !== first.tms) {
+      pxPerMs = (last.px - first.px) / (last.tms - first.tms);
+    }
+
+    getPx = (tms) => {
+      const px = tsAxis.timeToCoordinate(Math.round(tms / 1000));
+      if (px != null) return px;
+      if (pxPerMs == null || !last || !first) return null;
+      if (tms > last.tms)  return last.px  + (tms - last.tms)  * pxPerMs;
+      if (tms < first.tms) return first.px + (tms - first.tms) * pxPerMs;
+      return null;
+    };
+  } else {
+    // Line: Chart.js. scale.getPixelForValue returns pixel-x relative to
+    // the canvas (which shares .chart-wrapper's inner left edge with the
+    // strip). Chart.js's internal dataset already spans history+forecast,
+    // so scale.left..scale.right covers everything the chart shows.
+    const pc = window.priceChart;
+    if (!pc?.scales?.x) return;
+    const scale = pc.scales.x;
+    minBound = scale.left  - 50;
+    maxBound = scale.right + 50;
+    getPx = (tms) => scale.getPixelForValue(tms);
+  }
+
+  // Dedup by UTC day (floor — keeps TODAY at noon-UTC distinct from D1 at
+  // anchor+24h). History wins when a date collides with a forecast tile.
+  const seen = new Map();
+  for (const col of Array.from(strip.querySelectorAll('.day-col'))) {
+    const tms = parseInt(col.dataset.ts);
+    if (!isFinite(tms)) { col.style.display = 'none'; continue; }
+    const key = Math.floor(tms / 86400000);
+    const isForecast = col.classList.contains('forecast-col');
+    const prev = seen.get(key);
+    if (prev) {
+      if (isForecast && !prev.classList.contains('forecast-col')) { col.style.display = 'none'; continue; }
+      if (!isForecast && prev.classList.contains('forecast-col')) { prev.style.display = 'none'; }
+    }
+    seen.set(key, col);
+    col.classList.remove('first-forecast');
+
+    const px = getPx(tms);
+    if (px == null || !isFinite(px) || px < minBound || px > maxBound) {
+      col.style.display = 'none';
+      continue;
+    }
+    col.style.display = '';
+    col.style.left = `${px}px`;
+  }
+
+  // Mark first visible forecast tile so the CSS separator line renders.
+  const firstVisibleForecast = Array.from(strip.querySelectorAll('.day-col.forecast-col'))
+    .filter(c => c.style.display !== 'none')
+    .sort((a, b) => (parseInt(a.dataset.ts) || 0) - (parseInt(b.dataset.ts) || 0))[0];
+  if (firstVisibleForecast) firstVisibleForecast.classList.add('first-forecast');
 }
+
+// Both "positioners" share the implementation. Every caller — Chart.js
+// afterRender hook (line), Lightweight Charts subscribeVisibleTimeRangeChange
+// (candle), resize handler, forecast re-injection, mode-switch reparenting —
+// converges here, so tiles re-hook on every chart update and drag-pan
+// produces continuous tile movement.
+function positionStripOnChart(/* chart */) { _layoutStrip(); }
+function positionCandleStrip()             { _layoutStrip(); }
 
 window.positionStripOnChart = positionStripOnChart;
 window.positionCandleStrip = positionCandleStrip;
@@ -467,7 +528,11 @@ async function rescoreMonth() {
   }
 }
 
-function initStripPanButtons() {
+// Strip is now absolute-positioned to chart pixels — no strip-level pan
+// buttons needed (chart has its own ‹ › buttons that drive the strip via
+// positionStripOnChart / positionCandleStrip).
+function initStripPanButtons() { /* disabled — see chart pan buttons */ }
+function _deadInitStripPanButtons() {
   const strip = document.getElementById('monthStrip');
   if (!strip) return;
   const parent = strip.parentElement;
@@ -507,5 +572,20 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   document.getElementById('rescoreBtn')?.addEventListener('click', rescoreMonth);
   setTimeout(toggleMonthlyVisibility, 500);
-  initStripPanButtons();
+
+  // Unwrap any legacy .strip-pan-wrap (from earlier flex-scroll design) so
+  // #monthStrip is a direct child of the chart wrapper again.
+  const strip = document.getElementById('monthStrip');
+  const oldWrap = strip?.parentElement?.classList.contains('strip-pan-wrap')
+    ? strip.parentElement : null;
+  if (oldWrap && oldWrap.parentElement) {
+    oldWrap.parentElement.insertBefore(strip, oldWrap);
+    oldWrap.remove();
+  }
+
+  // Reposition on window resize (chart width changes → pixel coords change).
+  window.addEventListener('resize', () => {
+    window.positionStripOnChart?.();
+    window.positionCandleStrip?.();
+  });
 });
