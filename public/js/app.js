@@ -227,6 +227,10 @@ function buildPriceChart(histJson) {
   if (state.days === 30 && prices.length) {
     initialXMax = prices[prices.length - 1].ts;
     initialXMin = initialXMax - 7 * 86400000;
+    // Allow scrolling forward into the 7-day forecast when an overlay is live.
+    if (window.activePrediction?.trajectory?.length) {
+      panLimitMax = prices[prices.length - 1].ts + 8 * 86400000;
+    }
   }
 
   // Gradient fill under price line
@@ -1135,10 +1139,9 @@ function _fillForecastTrajectory(prophecy) {
 window.renderPredictionOverlay = function renderPredictionOverlay({ focus = false } = {}) {
   const prophecy = window.activePrediction;
 
-  // HARD RULE: the prediction only ever renders in 1W view. On 1D / 1M / 3M /
-  // 1Y the overlay is stripped from both charts. User must switch to 1W to
-  // see it — the AI Forecast button never forces a range change.
-  const allowed = state.days === 7;
+  // Overlay renders on 1W AND 1M ranges (both charts). 1D is locked (single
+  // day view, no room for 7d projection), 3M / 1Y zoom too far out to read.
+  const allowed = state.days === 7 || state.days === 30;
 
   // Line chart — mutate the existing Chart.js instance.
   if (priceChart) {

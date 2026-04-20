@@ -20,9 +20,10 @@ npm start
 - `services/newsapi.js` — NewsAPI.org fetcher with per-date caching and delta inserts.
 - `services/monthly.js` — orchestrates per-day sentiment: ETH/BTC daily bars + headlines + Claude batched verdicts (Haiku 4.5, tool-use for strict JSON).
 - `services/oracle.js` — Claude Sonnet 4.6 pattern prophecy engine over saved marker sets.
-- `services/forecast.js` — Claude Sonnet 4.6 7-day AI forecast engine. Pattern-completion over 7–90 days of history. 28-point (every 6h) trajectory. Served from in-memory cache (30min TTL) with SQLite DB fallback on cold start.
+- `services/forecast.js` — Claude Sonnet/Opus 7-day AI forecast. Single-window + combined multi-window (7/15/30/60/90d Opus synthesis). 28-point (every 6h) trajectory. Cache→DB→throw (no auto-Claude). Every forecast stamps `{kind, system, prompt_hash, tool_schema}` for audit.
 - `services/marketvitals.js` — funding rate, OI, BTC dominance, Fear & Greed, gas, hash rate, MACD, Bollinger.
-- `services/buyadvisor.js` — buy/sell/hold advisor using vitals + sentiment.
+- `services/buyadvisor.js` — Sonnet + Advanced Opus buy/hodl/sell. Opus path hard-gates on a same-day Opus 7d forecast, consumes `sentiment_aggregates`, user_posts, break-speed discipline, ETH/BTC tripwire, friction-vs-fuel funding language.
+- `services/masterpredict.js` — **NEW in v1.3**. Opus 4.7 streaming daily master report: 90d sentiment + 14d headlines + vitals + order flow + 30d user posts + latest Opus forecast + latest Opus buy advice → today_verdict/feeling/executive_summary, key_data_points, critical_contradictions, invalidation_levels (w/ break-speed note), action_plan, 500-900 word markdown narrative. Served over SSE with 10s keep-alive pings, 3 transient-retry loop.
 - `services/orderflow.js` — Binance WebSocket trade aggregation.
 
 **Frontend:** Vanilla JS, no build step. Modules in `public/js/`:
@@ -73,7 +74,9 @@ App runs without either key — AI features and historical news just degrade gra
    - `news_fetch_log` — soft throttle for empty / errored days, keyed `(date, category)`
    - `user_prefs` — currency, range, theme, indicators (server-synced on each click)
    - `marker_sets` + `marker_points` — saved Oracle pattern sets with embedded ETH OHLC per marker
-   - `prediction_history` — all AI forecasts + Oracle + pattern predictions with accuracy tracking
+   - `prediction_history` — all AI forecasts + Oracle + buy-advice + **master_report** rows; each row persists `raw_result.prompt = {kind, system, prompt_hash, tool_schema}` + `context_digest` + `response_meta` for full accuracy attribution
+   - `user_posts` — freeform-imported / Reddit-RSS-pulled community posts with Sonnet-scored `hope_score`, `war_score`, `people_sentiment`, summary
+   - `buy_recommendations` — Sonnet + Opus Buy/HODL/SELL history, indexed by ts
 
 ## API Endpoints
 
@@ -105,6 +108,13 @@ App runs without either key — AI features and historical news just degrade gra
 | `/api/admin/rescore-sentiment` | POST | `{days}`. Re-run Claude verdicts on last N days. |
 | `/api/admin/prediction` | POST | Save manual prediction as ai_forecast type. Becomes live immediately. |
 | `/api/admin/set-live-forecast/:id` | POST | Promote a stored forecast to live in-memory cache. All clients get it on next refresh. |
+| `/api/admin/master-predict-stream` | GET (SSE) | **NEW v1.3**. Streams Opus master report with 10s keep-alive pings. Final `{done, data}` or `{error}` event. |
+| `/api/admin/master-predict/latest` | GET | Last 5 master_report rows. |
+| `/api/admin/posts-stats` | GET | Today + 7d aggregates: user-post counts, hope/war avgs, sentiment breakdown, top sources, daily sentiment, headline counts, order-flow digest. |
+| `/api/user-posts/import` | POST | Freeform text/JSON → Sonnet-scored user_posts (JSON fast-path + prose slow-path). |
+| `/api/user-posts/fetch-reddit` | POST | **NEW v1.3**. Pulls subreddit RSS feeds (browser UA + old.reddit + `.json` fallbacks) → Sonnet-scored, saved to `user_posts`. |
+| `/api/user-posts/counts` | GET | Per-date counts for imported user posts. |
+| `/api/buy-time-advanced` | GET | Advanced Opus Buy/HODL. Returns 412 `NEED_OPUS_FORECAST` if today's Opus 7d forecast hasn't been generated. |
 
 ## Cache TTLs
 
@@ -142,19 +152,29 @@ Server-side:
 - History bars: date + time, close price, ▲/▼ %, OHLC row; plus AI forecast badge (direction + confidence) if a forecast is active
 - Forecast region (beyond last candle): date + time, interpolated forecast price, direction, confidence %, low/high band
 
-## 7-Day AI Forecast Engine (`services/forecast.js`)
+## Prediction Layers (v1.3)
 
-Claude Sonnet 4.6 pattern-completion engine:
-1. Admin chooses history window: **7 / 15 / 30 / 90 days** of daily bars + news
-2. Claude scans for the strongest historical analog (shape, momentum, macro/hope regime)
-3. Returns 28-point (every 6h × 7 days) trajectory + daily_breakdown + pattern_match + key_drivers + risks
-4. Result saved to `prediction_history` DB and promoted to in-memory cache
-5. **Clients (Watch + Weather) always receive the most recent stored forecast** — no generation wait
+Four stacked AI layers, each consumes the outputs of the layers below it. Every output stamps `{kind, system, prompt_hash, tool_schema}` into `prediction_history.raw_result.prompt` for full attribution.
 
-Admin controls (no forecast controls on client pages):
-- Run new AI forecast with chosen data window
-- Set any past forecast as live (instantly promotes to cache)
-- Save manual prediction (direction + move% + confidence + narrative) — also becomes live
+**Layer 1 — Scoring (persistent cache)**
+- `Haiku 4.5` batched per-day sentiment → `daily_sentiment` (verdict, hope_score 0-100, macro_score −100..+100, summary). Hourly timer re-runs today; all other days are one-shot cached. No auto-Claude.
+- `Sonnet 4.6` user-post scoring (10 posts/batch) → `user_posts` (hope_score, war_score, people_sentiment, summary).
+
+**Layer 2 — 7-day Forecast** (`services/forecast.js`)
+- Single-window: Sonnet 4.6 over chosen 7/15/30/90 day history.
+- Combined Multi-Window Sonnet: 3 parallel sub-forecasts + synthesis = 4 Sonnet calls.
+- **Advanced Opus Max Layers**: 5 sub-forecasts (7, 15, 30, 60, 90 days) + synthesis = **6 Opus calls**. Returns direction, confidence, 28-point 6-hourly trajectory, daily_breakdown, pattern_match, key_drivers, risks.
+- Prompts weave ETH/BTC tripwire, friction-vs-fuel funding calibration, break-speed discipline, 2-3 week lead time, second-higher-low confirmation.
+
+**Layer 3 — Buy/HODL Advice** (`services/buyadvisor.js`)
+- Sonnet path: 30d sentiment + week headlines + vitals + order flow → BUY/HODL/SELL.
+- **Advanced Opus path** (1 Opus call): HARD-GATED on a same-day Opus 7d forecast (returns HTTP 412 + `NEED_OPUS_FORECAST` if missing). Consumes 90d sentiment, 2w headlines, vitals, order flow, 30d user_posts, sentiment_aggregates (hope/macro 7d+30d avgs + momentums, war_days_14d), plus the Layer-2 forecast as default direction. Must cite ≥1 hope number and ≥1 macro/war signal.
+
+**Layer 4 — Master Predict Report** (`services/masterpredict.js`, v1.3)
+- 1 Opus 4.7 call, streamed via SSE. Synthesizes **everything** above (Layer-1 aggregates + Layer-2 forecast + Layer-3 advice) plus 14d headlines, vitals, order flow, and user_posts directly. Produces today_verdict + bias + confidence + timeframe + headline + today_feeling + executive_summary + sentiment_analysis + technical_analysis + forecast_alignment + buy_advice_alignment + key_data_points + critical_contradictions + what_could_flip_this + invalidation_levels (ETH + ETH/BTC + break-speed note) + action_plan + **500-900 word markdown narrative**.
+- Full end-to-end Master Report cost: ~1 Haiku + ~8 Opus calls.
+
+**Client delivery:** Watch and Weather pages always serve the most recent stored forecast — no generation wait. Admin buttons are the only auto-Claude triggers except for the hourly today-sentiment timer.
 
 ## ETHWEATHER (`/weather`)
 
@@ -172,10 +192,14 @@ Separate weather-themed landing page sharing the same SQLite DB:
 
 Direct URL only — not linked from client pages.
 - **Sentiment Overview** — stat cards + bar charts for Bullish/Bearish/Neutral %, Avg Hope (0–100), Avg Macro (−100..+100), War/Crisis days, Forecast Accuracy. Period picker: 7D / 14D / 30D / 60D
-- **Run AI Forecast** — data window picker (Last 7 Days / Last 15 Days / Last Month / Last 3 Months), then triggers Claude, saves result, makes it live
+- **📊 Posts & Feeds Stats** (v1.3) — two-column card (TODAY / LAST 7D) showing user-post counts, hope/war averages, bull/bear sentiment ratio, top post sources, daily sentiment aggregates, headline counts per category, and order-flow buy/sell volume digest
+- **🎯 Master Prediction Report** (v1.3) — gradient RUN button streams Opus synthesis of every data source. Opens modal with verdict/bias/confidence strip, today's feeling, key data points grid, sentiment/technical analysis, Opus-forecast + buy-advice alignment blocks, contradictions, invalidation levels, action plan, full markdown narrative, **📋 Copy JSON / 💾 Download / { } View** buttons for pasting into another Claude, and a "Data Used for This Prediction" footer (digest of what fed the prompt)
+- **Run AI Forecast** — data window picker (Last 7/15/30/90 Days) + bias picker (Today's Data / Force Upward / Force Downward) → single-window Sonnet, Combined Multi-Window Sonnet, or Advanced Opus Max-Layers (5 windows + synthesis)
 - **Rescore Sentiment** — re-run Claude on last N days
-- **Make New Prediction** — manual direction + move% + confidence + headline → saves as ai_forecast, instantly live
-- **Prediction History table** — all past forecasts with Set Live button; current live row highlighted
+- **Refresh Buy/HODL Advice** — Sonnet path + Advanced Opus path. Opus is hard-gated on a same-day Opus 7d forecast (actionable error in UI if missing)
+- **📥 Import User Posts** — paste freeform JSON/prose/markdown; Sonnet extracts + scores `hope_score`, `war_score`, `people_sentiment`
+- **🟠 Pull Reddit RSS** (v1.3) — configured subreddit list; browser-UA + old.reddit + `.json` fallbacks bypass Reddit's 403 blocks
+- **Prediction History table** — all past forecasts + buy advice + master reports with Set Live button, 📝 Prompt viewer (shows exact system prompt + hash used for that prediction), current live row highlighted
 
 ## Pattern Recognition (cosine similarity)
 
@@ -188,6 +212,25 @@ A candle is a "middle candle" (doji/spinning top) when `body / range < 0.25`. Ma
 ## Synced News Strip (candle view, 1M range)
 
 Below the candlestick chart in 1M mode: one tile per candle absolutely-positioned via `timeScale().timeToCoordinate()`. Each tile shows date, ETH move%, top headline, verdict color. Click → day-detail modal.
+
+## Unified Day Strip (v1.3)
+
+One `#monthStrip` element, shared between line and candle modes. Both hook tiles to the **active chart's native time→pixel function** in a single `_layoutStrip()` (monthly.js):
+- Line mode: Chart.js `scale.getPixelForValue(tms)` — tiles center on their date's chart x.
+- Candle mode: Lightweight Charts `timeScale().timeToCoordinate(tms_sec)` + linear extrapolation from known bar pxPerMs for forecast dates beyond the last candle.
+- UTC-day `Math.floor` bucket dedup so TODAY (noon UTC) and D1 (anchor+24h) never collide in the same slot.
+- Tiles outside the chart's visible range are `display:none`; `.chart-wrapper { overflow: hidden }` clips stragglers.
+- Fires on Chart.js `afterRender` (line) and Lightweight Charts `subscribeVisibleTimeRangeChange` (candle) → tiles drag with the chart during pan/zoom.
+- Hover: no Y-translate, just `box-shadow` + `z-index: 30` so tiles stay anchored and just pop forward.
+
+Forecast cards are re-injected by `renderForecastDayCards` after any `renderStrip()` rebuild.
+
+## Forecast Overlay Rendering (v1.3)
+
+- **Line chart** (Chart.js): raw 28-point 6-hourly trajectory drawn as-is with Bezier tension; time-based x-axis handles density automatically.
+- **Candle chart** (Lightweight Charts): forecast line is **resampled to match the OHLC bar interval** (4h for 1W, daily for 1M). Pipeline: `_fillForecastTrajectory(prophecy)` (fills 28-point grid + weaves in `daily_breakdown` end-of-day anchors via linear interpolation between known neighbors) → detect interval from OHLC bar spacing → resample at that interval → dedup by time → `setData()` → `fitContent()`. This keeps the history+forecast chart split proportional to their wall-clock time spans instead of being dominated by bar-count ratio (Lightweight Charts uses strict bar-based spacing).
+- Overlay active on both **1W and 1M** ranges (v1.3). 1D locks the view (single-day); 3M/1Y too far out to read.
+- 1M pan limit extends 8 days past history so the forecast is scrollable into view.
 
 ## 30-Day Sentiment Strip (line view, 1M range)
 
@@ -219,6 +262,19 @@ All 26 header/hero/footer data chips have `data-chip-key`. Click → floating po
 ## Order Flow (Binance WebSocket)
 
 Browser → `wss://stream.binance.com:9443/ws/ethusdt@aggTrade`. `m=true` → sell pressure; `m=false` → buy pressure. 5-minute rolling window. Feed shows only last buy + last sell (`MAX_ROWS = 1`).
+
+**Staleness safeguards (v1.3):**
+- Each chip update tracks `lastShownBuyTs` / `lastShownSellTs`. Older updates are ignored.
+- Server's independent Binance→SQLite pipeline is polled every 5s; if its `last_buy.ts` is newer than the client's locally-shown chip, the server value wins — prevents chip freezing when the browser WS silently lags.
+- WS staleness watchdog: if no aggTrade received in 30s, force-reconnect.
+
+## User Posts Import (v1.3)
+
+Freeform input pipeline (`services/-none-`, in server.js). Paste JSON, CSV, markdown, prose, chat-log — Sonnet 4.6 figures out the structure:
+- **Fast path (JSON detected):** local wrapper-key scan (`posts`, `items`, `entries`, `data`, `results`, `messages`, …) extracts entries → batches of 10 sent to `score_posts` Sonnet tool → parallel hope/war/people_sentiment scoring.
+- **Slow path (prose):** single Sonnet `extract_and_score_posts` call — infers dates/sources from context, falls back to import date.
+- 90s per-call `withTimeout`, 3 min client AbortController. Live elapsed-seconds counter so users see progress.
+- **Reddit RSS** (`/api/user-posts/fetch-reddit`): Chrome browser UA + `Accept: text/html,application/xhtml+xml,...` + `Sec-Fetch-*` headers + fallback chain `www.reddit.com/.rss → old.reddit.com/.rss → /r/<sub>/.json → old.reddit/.json`. Parses Atom feeds via `xml2js` directly (rss-parser's internal fetch was getting Reddit-403'd). Each subreddit feed reported per-feed OK/fail with HTTP status.
 
 ## Themes (4)
 
