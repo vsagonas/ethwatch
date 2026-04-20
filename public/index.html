@@ -319,32 +319,9 @@
         <button class="chart-pan-btn chart-pan-right" id="candlePanRight" title="Scroll right">›</button>
       </div>
 
-      <div class="candle-legend">
-        <span class="candle-leg-item middle">● Middle candle (doji/spinning top)</span>
-        <span class="candle-leg-item marked">★ Your marked candle</span>
-        <span class="candle-hint">Click candles to mark bullish patterns · Collect 3+ then click Predict</span>
-      </div>
-      <div class="candle-actions" id="candleActions" style="display:none;">
-        <span class="marked-count" id="markedCount">0 candles marked</span>
-        <button class="predict-btn" id="predictBtn">🤖 Predict Pattern</button>
-        <button class="save-set-btn" id="saveSetBtn" title="Save marks as an Oracle pattern set">
-          <svg class="oracle-icon" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><circle cx="12" cy="12" r="2.5" fill="currentColor"/><circle cx="12" cy="12" r="6.5" fill="none" stroke="currentColor" stroke-width="1.2"/><circle cx="12" cy="12" r="10.5" fill="none" stroke="currentColor" stroke-width="0.6" opacity="0.45"/><path d="M12 1.5v2.5M12 20v2.5M1.5 12h2.5M20 12h2.5" stroke="currentColor" stroke-width="1.2"/></svg>
-          Save as Oracle Set
-        </button>
-        <button class="clear-marks-btn" id="clearMarksBtn">Clear Marks</button>
-      </div>
     </div>
 
     <div class="chart-hint" id="lineChartHint" style="display:none;">Click any day tile for headlines · Drag to pan · Zoom is disabled — use ⇔ Full Month to expand the 1M view</div>
-  </section>
-
-  <!-- PATTERN PREDICTION RESULT — shown directly under chart when a pattern is found -->
-  <section class="section" id="predictionSection" style="display:none;">
-    <div class="section-header">
-      <h2 class="section-title">Pattern Prediction</h2>
-      <button class="close-btn" id="closePrediction">✕ Close</button>
-    </div>
-    <div id="predictionResult"></div>
   </section>
 
   <!-- PATTERN RECOGNITION (similarity) — moved here so it's right under the chart -->
@@ -356,49 +333,6 @@
       </div>
     </div>
   </section>
-
-  <!-- CUSTOM PATTERNS — Oracle sets -->
-  <section class="section oracle-section" id="oracleSection">
-    <div class="section-header">
-      <h2 class="section-title">
-        <svg class="oracle-icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="12" cy="12" r="2.5" fill="currentColor"/><circle cx="12" cy="12" r="6.5" fill="none" stroke="currentColor" stroke-width="1.2"/><circle cx="12" cy="12" r="10.5" fill="none" stroke="currentColor" stroke-width="0.6" opacity="0.45"/><path d="M12 1.5v2.5M12 20v2.5M1.5 12h2.5M20 12h2.5" stroke="currentColor" stroke-width="1.2"/></svg>
-        Custom Patterns
-      </h2>
-      <p class="section-desc">Mark candles, save as a named pattern set, then run Claude pattern analysis to see what follows.</p>
-    </div>
-    <div id="oracleSetsList" class="oracle-sets-list">
-      <div class="oracle-empty">No Oracle sets yet. Mark candles in the chart, then click <strong>Save as Oracle Set</strong>.</div>
-    </div>
-  </section>
-
-  <!-- ORACLE save dialog -->
-  <div class="day-modal" id="oracleSaveModal" style="display:none;">
-    <div class="day-modal-backdrop" id="oracleSaveBackdrop"></div>
-    <div class="day-modal-panel oracle-save-panel" role="dialog" aria-modal="true">
-      <div class="dm-header">
-        <div>
-          <div class="dm-date">New Oracle Pattern Set</div>
-          <div class="dm-date-sub"><span id="oracleSaveMarkCount">0</span> candles · ETH prices will be embedded.</div>
-        </div>
-        <button class="close-btn" id="oracleSaveClose">✕</button>
-      </div>
-      <div class="dm-body">
-        <label class="oracle-form-label">Name
-          <input id="oracleSaveName" type="text" maxlength="120" placeholder="e.g. Bullish doji cluster" />
-        </label>
-        <label class="oracle-form-label">Description (what do these candles share?)
-          <textarea id="oracleSaveDesc" rows="3" placeholder="Low volatility after a 5%+ drop, with positive ETF news…"></textarea>
-        </label>
-        <label class="oracle-form-label">Your prediction (what do you expect after this pattern?)
-          <textarea id="oracleSavePred" rows="3" placeholder="ETH rallies 3–6% within 72h."></textarea>
-        </label>
-        <div class="oracle-save-actions">
-          <button class="clear-marks-btn" id="oracleSaveCancel">Cancel</button>
-          <button class="predict-btn" id="oracleSaveSubmit">Save Pattern</button>
-        </div>
-      </div>
-    </div>
-  </div>
 
   <!-- DAY DETAIL MODAL -->
   <div class="day-modal" id="dayModal" style="display:none;">
@@ -569,7 +503,6 @@
   <script src="/js/orderflow.js"></script>
   <script src="/js/news.js"></script>
   <script src="/js/monthly.js"></script>
-  <script src="/js/oracle.js"></script>
   <script src="/js/vitals.js"></script>
   <script src="/js/buyadvisor.js"></script>
   <script src="/js/forecast.js"></script>

@@ -205,10 +205,6 @@ Direct URL only — not linked from client pages.
 
 90 days of hourly closes. Each 24-hour window's log-return sequence is cosine-compared against the current 24-hour window. Threshold >0.65. Returns top 5 matches with outcome stats.
 
-## Candlestick — Middle Candle Detection
-
-A candle is a "middle candle" (doji/spinning top) when `body / range < 0.25`. Marked with yellow **M** below the bar. Users click candles to mark setups for Oracle or pattern prediction.
-
 ## Synced News Strip (candle view, 1M range)
 
 Below the candlestick chart in 1M mode: one tile per candle absolutely-positioned via `timeScale().timeToCoordinate()`. Each tile shows date, ETH move%, top headline, verdict color. Click → day-detail modal.
@@ -248,13 +244,6 @@ Each day: verdict tile (bullish/bearish/neutral) + hope bar. 7 forecast day tile
 ### Claude scoring (batched, Haiku 4.5)
 
 For each day missing verdict/hope_score/macro_score: one batched call returns verdict + score + summary + hope_score + hope_summary + macro_score + macro_summary. Stored in `daily_sentiment`.
-
-## ORACLE (Neural Pattern Prophecy)
-
-1. User marks candles → **Save as Oracle Set** with name + description + prediction.
-2. **Invoke Oracle** runs `services/oracle.js` — enriches each marker with sentiment + headlines, sends to Claude Sonnet 4.6 `submit_prophecy` tool.
-3. Returns `{direction, confidence, horizon, expected_move_pct, user_hypothesis_verdict, narrative, key_signals, risk_factors}`.
-4. Persisted on the set; re-run only on explicit click.
 
 ## Chip Popups + Drag-and-Drop (`chips.js`)
 
