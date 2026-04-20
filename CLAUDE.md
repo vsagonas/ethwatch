@@ -222,6 +222,7 @@ One `#monthStrip` element, shared between line and candle modes. Both hook tiles
 - Tiles outside the chart's visible range are `display:none`; `.chart-wrapper { overflow: hidden }` clips stragglers.
 - Fires on Chart.js `afterRender` (line) and Lightweight Charts `subscribeVisibleTimeRangeChange` (candle) → tiles drag with the chart during pan/zoom.
 - Hover: no Y-translate, just `box-shadow` + `z-index: 30` so tiles stay anchored and just pop forward.
+- **Chart↔strip hover link:** mousing over the chart (line or candle) tags the nearest-date `.day-col` with `.hover-match` (accent ring + front z-index). Wired via `window.highlightDayCardByTs(hoverMs)` called from the line canvas `mousemove` and Lightweight Charts `subscribeCrosshairMove`. Match window is ±18h around the card's ts. Cleared on `mouseleave` / crosshair leave.
 
 Forecast cards are re-injected by `renderForecastDayCards` after any `renderStrip()` rebuild.
 

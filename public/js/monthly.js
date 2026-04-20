@@ -284,6 +284,39 @@ function positionCandleStrip()             { _layoutStrip(); }
 window.positionStripOnChart = positionStripOnChart;
 window.positionCandleStrip = positionCandleStrip;
 
+// Chart-hover → day-card highlight. Called from the line chart's mousemove
+// and the candle chart's subscribeCrosshairMove handlers. Finds the .day-col
+// whose data-ts is closest to the hovered timestamp (within ±18h) and tags
+// it with .hover-match so the card visually pops (accent border + front).
+let _lastHighlightedDayCol = null;
+function highlightDayCardByTs(hoverMs) {
+  const strip = document.getElementById('monthStrip');
+  if (!strip || !isFinite(hoverMs)) return clearDayCardHighlight();
+  let best = null;
+  let bestDelta = Infinity;
+  strip.querySelectorAll('.day-col').forEach(col => {
+    const tms = parseInt(col.dataset.ts);
+    if (!isFinite(tms)) return;
+    const d = Math.abs(tms - hoverMs);
+    if (d < bestDelta) { bestDelta = d; best = col; }
+  });
+  // Only highlight if within ~18h of a card's center — otherwise the cursor
+  // isn't really over any specific day.
+  if (!best || bestDelta > 18 * 3600 * 1000) return clearDayCardHighlight();
+  if (_lastHighlightedDayCol === best) return;
+  if (_lastHighlightedDayCol) _lastHighlightedDayCol.classList.remove('hover-match');
+  best.classList.add('hover-match');
+  _lastHighlightedDayCol = best;
+}
+function clearDayCardHighlight() {
+  if (_lastHighlightedDayCol) {
+    _lastHighlightedDayCol.classList.remove('hover-match');
+    _lastHighlightedDayCol = null;
+  }
+}
+window.highlightDayCardByTs = highlightDayCardByTs;
+window.clearDayCardHighlight = clearDayCardHighlight;
+
 // ── LOAD MONTHLY ──────────────────────────────────────────────
 async function loadMonthly(currency, days = 30) {
   const strip = document.getElementById('monthStrip');

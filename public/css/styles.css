@@ -918,6 +918,18 @@ canvas { display: block; width: 100% !important; }
 .day-tile:hover { box-shadow: 0 4px 14px rgba(0,0,0,0.25); border-color: var(--accent); }
 .chart-aligned-strip .day-col:hover { z-index: 30; }
 
+/* Chart-hover → matching day card gets the same accent highlight, as if the
+   user was hovering the card itself. Set by window.highlightDayCardByTs from
+   both the line-chart mousemove and the candle-chart subscribeCrosshairMove. */
+.chart-aligned-strip .day-col.hover-match { z-index: 30; }
+.chart-aligned-strip .day-col.hover-match .day-tile {
+  border-color: var(--accent);
+  box-shadow: 0 4px 14px rgba(0,0,0,0.25), 0 0 0 2px color-mix(in srgb, var(--accent) 70%, transparent);
+}
+.chart-aligned-strip .day-col.hover-match .forecast-tile {
+  box-shadow: 0 4px 14px rgba(0,0,0,0.25), 0 0 0 2px color-mix(in srgb, var(--accent) 70%, transparent);
+}
+
 .day-tile.bull    { border-left: 4px solid var(--gain); }
 .day-tile.bear    { border-left: 4px solid var(--loss); }
 .day-tile.neutral { border-left: 4px solid var(--text2); }

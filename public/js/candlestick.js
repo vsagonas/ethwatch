@@ -184,6 +184,7 @@ function initCandlestickChart(ohlcData) {
     if (!tooltip) return;
     if (!param.point || !param.time || param.point.x < 0 || param.point.y < 0) {
       tooltip.style.display = 'none';
+      window.clearDayCardHighlight?.();
       return;
     }
 
@@ -194,6 +195,7 @@ function initCandlestickChart(ohlcData) {
     const fmtPct = (c, o) => o ? `${((c - o) / o * 100).toFixed(2)}%` : '—';
 
     const hoverMs = param.time * 1000;
+    window.highlightDayCardByTs?.(hoverMs);
     const bar = param.seriesData.get(candleSeries);
 
     // ── FORECAST REGION (no candle data at this time) ──────

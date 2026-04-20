@@ -497,7 +497,17 @@ function buildPriceChart(histJson) {
       lineTip.style.top     = `${y - 60 < 0 ? y + 10 : y - 60}px`;
       lineTip.style.display = '';
     });
-    canvas.addEventListener('mouseleave', () => { lineTip.style.display = 'none'; });
+    canvas.addEventListener('mouseleave', () => {
+      lineTip.style.display = 'none';
+      window.clearDayCardHighlight?.();
+    });
+    // Highlight the matching day card as the cursor moves over the chart.
+    canvas.addEventListener('mousemove', e => {
+      if (!priceChart?.scales?.x) return;
+      const rect = canvas.getBoundingClientRect();
+      const hoverTs = priceChart.scales.x.getValueForPixel(e.clientX - rect.left);
+      if (isFinite(hoverTs)) window.highlightDayCardByTs?.(hoverTs);
+    });
   }
 
   window.priceChart = priceChart;
